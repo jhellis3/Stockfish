@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2021 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -193,8 +193,8 @@ using namespace Trace;
 namespace {
 
   // Threshold for lazy and space evaluation
-  constexpr Value LazyThreshold1    =  Value(3130);
-  constexpr Value LazyThreshold2    =  Value(2204);
+  constexpr Value LazyThreshold1    =  Value(3631);
+  constexpr Value LazyThreshold2    =  Value(2084);
   constexpr Value SpaceThreshold    =  Value(11551);
 
   // KingAttackWeights[PieceType] contains king attack weights by piece type
@@ -1065,8 +1065,8 @@ make_v:
         && pos.piece_on(SQ_G7) == B_PAWN)
         correction += CorneredBishop;
 
-    return pos.side_to_move() == WHITE ?  Value(5 * correction)
-                                       : -Value(5 * correction);
+    return pos.side_to_move() == WHITE ?  Value(3 * correction)
+                                       : -Value(3 * correction);
   }
 
 } // namespace Eval
@@ -1080,7 +1080,7 @@ Value Eval::evaluate(const Position& pos) {
   Value v = useNNUE ? NNUE::evaluate(pos, true) + (pos.is_chess960() ? fix_FRC(pos) : 0)
                     : Evaluation<NO_TRACE>(pos).value();
 
-  // Guarantee evaluation does not hit the tablebase range
+  // Guarantee evaluation does not hit mate range
   v = std::clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
 
   return v;
