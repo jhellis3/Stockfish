@@ -1485,7 +1485,7 @@ namespace {
 
       moveCount++;
 
-      if (!PvNode && bestValue > VALUE_TB_LOSS_IN_MAX_PLY)
+      if (bestValue > VALUE_TB_LOSS_IN_MAX_PLY)
       {
          // Futility pruning and moveCount pruning (~5 Elo)
          if (   !givesCheck
@@ -1493,7 +1493,7 @@ namespace {
              &&  futilityBase > -VALUE_KNOWN_WIN
              &&  type_of(move) != PROMOTION)
          {
-             if (moveCount > 2)
+             if (moveCount > 2 + PvNode)
                  continue;
 
              futilityValue = futilityBase + PieceValue[EG][pos.piece_on(to_sq(move))];
