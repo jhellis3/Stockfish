@@ -475,7 +475,7 @@ namespace {
     Bound ttBound;
     Value bestValue, value, ttValue, eval, probCutBeta;
     bool givesCheck, improving, didLMR, priorCapture, isMate, gameCycle;
-    bool captureOrPromotion, doFullDepthSearch, moveCountPruning,
+    bool capture, doFullDepthSearch, moveCountPruning,
          ttCapture, kingDanger, ourMove;
     Piece movedPiece;
     int moveCount, captureCount, quietCount, bestMoveCount, improvement, complexity, rootDepth;
@@ -512,7 +512,7 @@ namespace {
     ttBound = tte->bound();
     ttMove =  rootNode ? thisThread->rootMoves[thisThread->pvIdx].pv[0]
             : ss->ttHit    ? tte->move() : MOVE_NONE;
-    ttCapture = ttMove && pos.capture_or_promotion(ttMove);
+    ttCapture = ttMove && pos.capture(ttMove);
     if (!excludedMove)
         ss->ttPv = PvNode || (ss->ttHit && tte->is_pv());
 
@@ -709,7 +709,7 @@ namespace {
         && (ourMove || !excludedMove)
         && !gameCycle
         && !thisThread->nmpGuard
-        &&  abs(eval) < 26305)
+        &&  abs(eval) < 2 * VALUE_KNOWN_WIN)
     {
        if (rootDepth > 10 && !ourMove)
            kingDanger = pos.king_danger();
@@ -804,14 +804,12 @@ namespace {
            while ((move = mp.next_move()) != MOVE_NONE)
                if (move != excludedMove)
                {
-                   assert(pos.capture_or_promotion(move));
+                   assert(pos.capture(move) || promotion_type(move) == QUEEN);
                    assert(depth >= 5);
-
-                   captureOrPromotion = true;
 
                    ss->currentMove = move;
                    ss->continuationHistory = &thisThread->continuationHistory[ss->inCheck]
-                                                                             [captureOrPromotion]
+                                                                             [true]
                                                                              [pos.moved_piece(move)]
                                                                              [to_sq(move)];
 
@@ -829,8 +827,13 @@ namespace {
                    if (value >= probCutBeta)
                    {
                        // if transposition table doesn't have equal or more deep info write probCut data into it
-                       tte->save(posKey, value_to_tt(value, ss->ply), ttPv,
-                                 BOUND_LOWER, depth - 3, move, ss->staticEval);
+                       if (   !ss->ttHit
+                           ||  ttValue == VALUE_NONE
+                           ||  ttDepth < depth - 3)
+                       {
+                           tte->save(posKey, value_to_tt(value, ss->ply), ttPv,
+                                     BOUND_LOWER, depth - 3, move, ss->staticEval);
+                       }
 
                        return value;
                    }
@@ -849,6 +852,19 @@ namespace {
         depth -= 2;
 
     } // In check search starts here
+
+   // Step 12. A small Probcut idea, when we are in check (~0 Elo)
+   probCutBeta = beta + 481;
+   if (    ss->inCheck
+        && !PvNode
+        && depth >= 2
+        && ttCapture
+        && (ttBound & BOUND_LOWER)
+        && ttDepth >= depth - 3
+        && ttValue >= probCutBeta
+        && abs(ttValue) <= VALUE_KNOWN_WIN
+        && abs(beta) <= VALUE_KNOWN_WIN)
+        return probCutBeta;
 
     const PieceToHistory* contHist[] = { (ss-1)->continuationHistory, (ss-2)->continuationHistory,
                                           nullptr                   , (ss-4)->continuationHistory,
@@ -899,7 +915,7 @@ namespace {
           (ss+1)->pv = nullptr;
 
       extension = 0;
-      captureOrPromotion = pos.capture_or_promotion(move);
+      capture = pos.capture(move);
       movedPiece = pos.moved_piece(move);
       givesCheck = pos.gives_check(move);
       isMate = false;
@@ -915,7 +931,7 @@ namespace {
       {
           ss->currentMove = move;
           ss->continuationHistory = &thisThread->continuationHistory[ss->inCheck]
-                                                                    [captureOrPromotion]
+                                                                    [capture]
                                                                     [movedPiece]
                                                                     [to_sq(move)];
           value = mate_in(ss->ply+1);
@@ -955,7 +971,7 @@ namespace {
           // Reduced depth of the next LMR search
           int lmrDepth = std::max(newDepth - reduction(improving, depth, moveCount, delta, thisThread->rootDelta), 0);
 
-          if (   captureOrPromotion
+          if (   capture
               || givesCheck)
           {
               // Futility pruning for captures (~0 Elo)
@@ -1071,7 +1087,7 @@ namespace {
       // Update the current move (this must be done after singular extension search)
       ss->currentMove = move;
       ss->continuationHistory = &thisThread->continuationHistory[ss->inCheck]
-                                                                [captureOrPromotion]
+                                                                [capture]
                                                                 [movedPiece]
                                                                 [to_sq(move)];
 
@@ -1092,7 +1108,7 @@ namespace {
           &&  thisThread->selDepth > rootDepth / 3
           &&  moveCount > 1
           && (!PvNode || ss->ply > 1)
-          && (!captureOrPromotion || (cutNode && (ss-1)->moveCount >1)))
+          && (!capture || (cutNode && (ss-1)->moveCount >1)))
       {
           Depth r = reduction(improving, depth, moveCount, delta, thisThread->rootDelta);
 
@@ -1118,6 +1134,11 @@ namespace {
           // Increase reduction if ttMove is a capture (~3 Elo)
           if (ttCapture)
               r++;
+
+          // Decrease reduction at PvNodes if bestvalue
+          // is vastly different from static evaluation
+          if (PvNode && !ss->inCheck && abs(ss->staticEval - bestValue) > 250)
+              r--;
 
           ss->statScore =  thisThread->mainHistory[us][from_to(move)]
                          + (*contHist[0])[movedPiece][to_sq(move)]
@@ -1163,7 +1184,7 @@ namespace {
               int bonus = value > alpha ?  stat_bonus(newDepth)
                                         : -stat_bonus(newDepth);
 
-              if (captureOrPromotion)
+              if (capture)
                   bonus /= 6;
 
               update_continuation_histories(ss, movedPiece, to_sq(move), bonus);
@@ -1258,10 +1279,10 @@ namespace {
       // If the move is worse than some previously searched move, remember it to update its stats later
       if (move != bestMove)
       {
-          if (captureOrPromotion && captureCount < 32)
+          if (capture && captureCount < 32)
               capturesSearched[captureCount++] = move;
 
-          else if (!captureOrPromotion && quietCount < 64)
+          else if (!capture && quietCount < 64)
               quietsSearched[quietCount++] = move;
       }
     }
@@ -1309,11 +1330,6 @@ namespace {
     if (bestValue <= alpha)
         ss->ttPv = ss->ttPv || ((ss-1)->ttPv && depth > 3);
 
-    // Otherwise, a counter move has been found and if the position is the last leaf
-    // in the search tree, remove the position from the search tree.
-    else if (depth > 3)
-        ss->ttPv = ss->ttPv && (ss+1)->ttPv;
-
     // Write gathered information in transposition table
     if (!excludedMove && !(rootNode && thisThread->pvIdx))
         tte->save(posKey, value_to_tt(bestValue, ss->ply), ss->ttPv,
@@ -1349,7 +1365,7 @@ namespace {
     Depth ttDepth;
     Bound ttBound;
     Value bestValue, value, ttValue, futilityValue, futilityBase;
-    bool pvHit, givesCheck, captureOrPromotion, gameCycle;
+    bool pvHit, givesCheck, capture, gameCycle;
     int moveCount;
 
     if (PvNode)
@@ -1481,7 +1497,7 @@ namespace {
       assert(is_ok(move));
 
       givesCheck = pos.gives_check(move);
-      captureOrPromotion = pos.capture_or_promotion(move);
+      capture = pos.capture(move);
 
       moveCount++;
 
@@ -1521,14 +1537,14 @@ namespace {
 
       ss->currentMove = move;
       ss->continuationHistory = &thisThread->continuationHistory[ss->inCheck]
-                                                                [captureOrPromotion]
+                                                                [capture]
                                                                 [pos.moved_piece(move)]
                                                                 [to_sq(move)];
 
       // Continuation history based pruning (~2 Elo)
-      if (  !captureOrPromotion
+      if (   !capture
           && !PvNode
-          && bestValue > VALUE_TB_LOSS_IN_MAX_PLY
+          &&  bestValue > VALUE_TB_LOSS_IN_MAX_PLY
           && (*contHist[0])[pos.moved_piece(move)][to_sq(move)] < CounterMovePruneThreshold
           && (*contHist[1])[pos.moved_piece(move)][to_sq(move)] < CounterMovePruneThreshold)
           continue;
@@ -1536,11 +1552,11 @@ namespace {
       // movecount pruning for quiet check evasions
       if (  bestValue > VALUE_TB_LOSS_IN_MAX_PLY
           && quietCheckEvasions > 1
-          && !captureOrPromotion
+          && !capture
           && ss->inCheck)
           continue;
 
-      quietCheckEvasions += !captureOrPromotion && ss->inCheck;
+      quietCheckEvasions += !capture && ss->inCheck;
 
       // Make and search the move
       pos.do_move(move, st, givesCheck);
@@ -1664,7 +1680,7 @@ namespace {
     bonus2 = bestValue > beta + PawnValueMg ? bonus1               // larger bonus
                                             : stat_bonus(depth);   // smaller bonus
 
-    if (!pos.capture_or_promotion(bestMove))
+    if (!pos.capture(bestMove))
     {
         // Increase stats for the best move in case it was a quiet move
         update_quiet_stats(pos, ss, bestMove, bonus2);
