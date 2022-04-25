@@ -478,14 +478,14 @@ namespace {
     bool capture, doFullDepthSearch, moveCountPruning,
          ttCapture, kingDanger, ourMove;
     Piece movedPiece;
-    int moveCount, captureCount, quietCount, bestMoveCount, improvement, complexity, rootDepth;
+    int moveCount, captureCount, quietCount, improvement, complexity, rootDepth;
 
     // Step 1. Initialize node
     Thread* thisThread  = pos.this_thread();
     ss->inCheck         = pos.checkers();
     priorCapture        = pos.captured_piece();
     Color us            = pos.side_to_move();
-    moveCount           = bestMoveCount = captureCount = quietCount = ss->moveCount = 0;
+    moveCount           = captureCount = quietCount = ss->moveCount = 0;
     bestValue           = -VALUE_INFINITE;
     gameCycle           = kingDanger = false;
     rootDepth           = thisThread->rootDepth;
@@ -1067,6 +1067,10 @@ namespace {
             // If the eval of ttMove is greater than beta, we reduce it (negative extension)
             else if (ttValue >= beta && (ss-1)->moveCount > 1 && !gameCycle)
                      extension = -2;
+
+            // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
+            else if (ttValue <= alpha && ttValue <= value)
+                     extension = -1;
           }
       }
 
@@ -1112,11 +1116,6 @@ namespace {
       {
           Depth r = reduction(improving, depth, moveCount, delta, thisThread->rootDelta);
 
-          // Decrease reduction at some PvNodes (~2 Elo)
-          if (   PvNode
-              && bestMoveCount <= 3)
-              r--;
-
           // Decrease reduction if position is or has been on the PV
           // and node is not likely to fail low. (~3 Elo)
           if (   ss->ttPv
@@ -1139,6 +1138,10 @@ namespace {
           // is vastly different from static evaluation
           if (PvNode && !ss->inCheck && abs(ss->staticEval - bestValue) > 250)
               r--;
+
+          // Decrease reduction for PvNodes based on depth
+          if (PvNode)
+              r -= 1 + 15 / ( 3 + depth );
 
           ss->statScore =  thisThread->mainHistory[us][from_to(move)]
                          + (*contHist[0])[movedPiece][to_sq(move)]
@@ -1264,10 +1267,7 @@ namespace {
                   update_pv(ss->pv, move, (ss+1)->pv);
 
               if (PvNode && value < beta) // Update alpha! Always alpha < beta
-              {
                   alpha = value;
-                  bestMoveCount++;
-              }
               else
               {
                   assert(value >= beta); // Fail high
