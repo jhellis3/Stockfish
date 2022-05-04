@@ -182,7 +182,7 @@ Value Endgame<KBNK>::operator()(const Position& pos) const {
                 + push_close(strongKing, weakKing)
                 + 420 * push_to_corner(opposite_colors(strongBishop, SQ_A1) ? flip_file(weakKing) : weakKing);
 
-  assert(abs(result) < VALUE_TB_WIN_IN_MAX_PLY);
+  assert(abs(result) < VALUE_MATE_IN_MAX_PLY);
   return strongSide == pos.side_to_move() ? result : -result;
 }
 

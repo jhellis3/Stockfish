@@ -309,8 +309,8 @@ void Thread::search() {
               int momentum = int(prev) * prev / 19178;
               delta = Value(16);
 
-              if (prev >= VALUE_MATE_IN_MAX_PLY)
-                  alpha = VALUE_TB_WIN_IN_MAX_PLY;
+              if (prev > VALUE_MATE_IN_MAX_PLY)
+                  alpha = VALUE_MATE_IN_MAX_PLY - MAX_PLY;
               else
                   alpha = std::max(prev - (delta + (prev < 0 ? momentum : 0)),-VALUE_INFINITE);
 
@@ -574,7 +574,7 @@ namespace {
     if (  !PvNode
         && ss->ttHit
         && !gameCycle
-        && pos.rule50_count() < 88
+        && (!ourMove || beta < VALUE_MATE_IN_MAX_PLY)
         && ttDepth > depth - (thisThread->id() % 2 == 1)
         && ttValue != VALUE_NONE // Possible in case of TT access race
         && (ttValue != VALUE_DRAW || VALUE_DRAW >= beta)
@@ -674,15 +674,12 @@ namespace {
             eval = ttValue;
     }
     else
+    {
         ss->staticEval = eval = evaluate(pos);
 
-    ss->staticEval = eval = eval * std::max(0, (100 - pos.rule50_count())) / 100;
-
-    if (gameCycle)
-        ss->staticEval = eval = eval * std::max(0, (100 - pos.rule50_count())) / 100;
-
-    if (!ss->ttHit && !excludedMove)
-        tte->save(posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, MOVE_NONE, eval);
+        if (!excludedMove)
+            tte->save(posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, MOVE_NONE, eval);
+    }
 
     // Use static evaluation difference to improve quiet move ordering (~3 Elo)
     if (is_ok((ss-1)->currentMove) && !(ss-1)->inCheck && !priorCapture)
@@ -707,7 +704,6 @@ namespace {
     // Begin early pruning.
     if (   !PvNode
         && (ourMove || !excludedMove)
-        && !gameCycle
         && !thisThread->nmpGuard
         &&  abs(eval) < 2 * VALUE_KNOWN_WIN)
     {
@@ -729,6 +725,7 @@ namespace {
        if (    depth < 8
            && !ss->ttPv
            && !kingDanger
+           && !gameCycle
            &&  abs(alpha) < VALUE_KNOWN_WIN
            &&  eval >= beta
            &&  eval - futility_margin(depth, improving) - (ss-1)->statScore / 256 >= beta)
@@ -737,7 +734,8 @@ namespace {
        // Step 9. Null move search with verification search (~22 Elo)
        if (   (ss-1)->currentMove != MOVE_NULL
            && (ss-1)->statScore < 14695
-           &&  beta < VALUE_TB_WIN_IN_MAX_PLY
+           && !gameCycle
+           &&  beta < VALUE_MATE_IN_MAX_PLY
            &&  eval >= beta
            &&  eval >= ss->staticEval
            &&  ss->staticEval >= beta - 15 * depth - improvement / 15 + 198 + complexity / 28
@@ -767,7 +765,7 @@ namespace {
            if (nullValue >= beta)
            {
                // Do not return unproven mate or TB scores
-               nullValue = std::min(nullValue, VALUE_TB_WIN_IN_MAX_PLY);
+               nullValue = std::min(nullValue, VALUE_MATE_IN_MAX_PLY);
 
                if (abs(beta) < VALUE_KNOWN_WIN && depth < 11 && beta <= qsearch<NonPV>(pos, ss, beta-1, beta))
                    return nullValue;
@@ -791,7 +789,7 @@ namespace {
        // If we have a good enough capture and a reduced search returns a value
        // much above beta, we can (almost) safely prune the previous move.
        if (    depth > 4
-           &&  abs(beta) < VALUE_TB_WIN_IN_MAX_PLY
+           &&  abs(beta) < VALUE_MATE_IN_MAX_PLY
            // If we don't have a ttHit or our ttDepth is not greater our
            // reduced depth search, continue with the probcut.
            && (!ss->ttHit || ttDepth < depth - 3))
@@ -846,9 +844,9 @@ namespace {
     // Step 11. If the position is not in TT, decrease depth by 2 or 1 depending on node type (~3 Elo)
     if (   PvNode
         && depth >= 3
-        && ((ss-1)->moveCount > 1 || !ourMove)
         && !gameCycle
-        && !ttMove)
+        && !ttMove
+        && ((ss-1)->moveCount > 1 || !ourMove))
         depth -= 2;
 
     } // In check search starts here
@@ -961,7 +959,7 @@ namespace {
       if (  !PvNode
           && (ss->ply > 2 || lmPrunable)
           && pos.non_pawn_material(us)
-          && bestValue > VALUE_TB_LOSS_IN_MAX_PLY)
+          && bestValue > VALUE_MATED_IN_MAX_PLY)
       {
           // Skip quiet moves if movecount exceeds our FutilityMoveCount threshold (~7 Elo)
           moveCountPruning = moveCount >= futility_move_count(improving, depth);
@@ -1017,26 +1015,21 @@ namespace {
           }
       }
 
-      // Step 14. Extensions (~66 Elo)
-      if (   gameCycle
-          && ((PvNode && (ss-1)->moveCount < 2) || (depth < 5 && ss->doubleExtensions < 5)))
-          extension = 2;
-
       // Singular extension search (~58 Elo). If all moves but one fail low on a
       // search of (alpha-s, beta-s), and just one fails high on (alpha, beta),
       // then that move is singular and should be extended. To verify this we do
       // a reduced search on all the other moves but the ttMove and if the
       // result is lower than ttValue minus a margin, then we will extend the ttMove.
-      else if (  !rootNode
+      if (  !rootNode
           &&  depth >= 4 + 2 * (PvNode && tte->is_pv())
           &&  move == ttMove
           && !excludedMove // Avoid recursive singular search
           &&  ttValue != VALUE_NONE
-          &&  abs(beta) < VALUE_TB_WIN_IN_MAX_PLY
+          &&  abs(beta) < VALUE_MATE_IN_MAX_PLY
           && (ttBound & BOUND_LOWER)
           &&  ttDepth >= depth - 3)
       {
-          Value singularBeta = std::max(ttValue - 3 * depth, VALUE_TB_LOSS_IN_MAX_PLY);
+          Value singularBeta = std::max(ttValue - 3 * depth, VALUE_MATED_IN_MAX_PLY);
           Depth singularDepth = (depth - 1) / 2;
 
           ss->excludedMove = move;
@@ -1050,7 +1043,7 @@ namespace {
           // Avoid search explosion by limiting the number of double extensions
           if (  !PvNode
               && value < singularBeta - 26
-              && ss->doubleExtensions < 3)
+              && ss->doubleExtensions < 4)
               extension = 2;
           }
 
@@ -1108,7 +1101,6 @@ namespace {
       // cases where we extend a son if it has good chances to be "interesting".
       if (    depth >= 2
           && !lateKingDanger
-          && !gameCycle
           &&  thisThread->selDepth > rootDepth / 3
           &&  moveCount > 1
           && (!PvNode || ss->ply > 1)
@@ -1419,7 +1411,7 @@ namespace {
     if (  !PvNode
         && ss->ttHit
         && !gameCycle
-        && pos.rule50_count() < 88
+        && ((ss->ply & 1) || beta < VALUE_MATE_IN_MAX_PLY)
         && tte->depth() >= ttDepth
         && ttValue != VALUE_NONE // Only in case of TT access race
         && (ttValue != VALUE_DRAW || VALUE_DRAW >= beta)
@@ -1452,11 +1444,6 @@ namespace {
             ss->staticEval = bestValue =
             (ss-1)->currentMove != MOVE_NULL ? evaluate(pos)
                                              : -(ss-1)->staticEval;
-
-        ss->staticEval = bestValue = bestValue * std::max(0, (100 - pos.rule50_count())) / 100;
-
-        if (gameCycle)
-            ss->staticEval = bestValue = bestValue * std::max(0, (100 - pos.rule50_count())) / 100;
 
         // Stand pat. Return immediately if static value is at least beta
         if (bestValue >= beta)
@@ -1501,7 +1488,7 @@ namespace {
 
       moveCount++;
 
-      if (bestValue > VALUE_TB_LOSS_IN_MAX_PLY)
+      if (bestValue > VALUE_MATED_IN_MAX_PLY)
       {
          // Futility pruning and moveCount pruning (~5 Elo)
          if (   !givesCheck
@@ -1544,13 +1531,13 @@ namespace {
       // Continuation history based pruning (~2 Elo)
       if (   !capture
           && !PvNode
-          &&  bestValue > VALUE_TB_LOSS_IN_MAX_PLY
+          &&  bestValue > VALUE_MATED_IN_MAX_PLY
           && (*contHist[0])[pos.moved_piece(move)][to_sq(move)] < CounterMovePruneThreshold
           && (*contHist[1])[pos.moved_piece(move)][to_sq(move)] < CounterMovePruneThreshold)
           continue;
 
       // movecount pruning for quiet check evasions
-      if (  bestValue > VALUE_TB_LOSS_IN_MAX_PLY
+      if (  bestValue > VALUE_MATED_IN_MAX_PLY
           && quietCheckEvasions > 1
           && !capture
           && ss->inCheck)
@@ -1613,8 +1600,8 @@ namespace {
 
     assert(v != VALUE_NONE);
 
-    return  v >= VALUE_TB_WIN_IN_MAX_PLY  ? v + ply
-          : v <= VALUE_TB_LOSS_IN_MAX_PLY ? v - ply : v;
+    return  v > VALUE_MATE_IN_MAX_PLY  ? v + ply
+          : v < VALUE_MATED_IN_MAX_PLY ? v - ply : v;
   }
 
 
@@ -1633,24 +1620,23 @@ namespace {
     if (v == VALUE_NONE)
         return VALUE_NONE;
 
-    if (v >= VALUE_TB_WIN_IN_MAX_PLY)  // TB win or better
+    if (v > VALUE_MATE_IN_MAX_PLY)  // TB win or better
     {
-        if (v >= VALUE_MATE_IN_MAX_PLY && VALUE_MATE - v > 99 - r50c)
-            return VALUE_MATE_IN_MAX_PLY - 1; // do not return a potentially false mate score
+        if (VALUE_MATE - v > 99 - r50c)
+            return VALUE_MATE_IN_MAX_PLY; // do not return a potentially false mate score
 
         return v - ply;
     }
 
-    if (v <= VALUE_TB_LOSS_IN_MAX_PLY) // TB loss or worse
+    if (v < VALUE_MATED_IN_MAX_PLY) // TB loss or worse
     {
-        if (v <= VALUE_MATED_IN_MAX_PLY && VALUE_MATE + v > 99 - r50c)
-            return VALUE_MATED_IN_MAX_PLY + 1; // do not return a potentially false mate score
+        if (VALUE_MATE + v > 99 - r50c)
+            return VALUE_MATED_IN_MAX_PLY; // do not return a potentially false mate score
 
         return v + ply;
     }
 
     return v;
-
   }
 
 

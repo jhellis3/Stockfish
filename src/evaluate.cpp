@@ -1081,8 +1081,10 @@ Value Eval::evaluate(const Position& pos) {
   Value v = useNNUE ? NNUE::evaluate(pos, true) + (pos.is_chess960() ? fix_FRC(pos) : 0)
                     : Evaluation<NO_TRACE>(pos).value();
 
-  // Guarantee evaluation does not hit mate range
-  v = std::clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
+  v = v * std::max(1, (101 - pos.rule50_count())) / 101;
+
+  // Do not return evals greater than a TB result
+  v = std::clamp(v, -VALUE_TB_WIN + 8 * PawnValueEg, VALUE_TB_WIN - 8 * PawnValueEg);
 
   return v;
 }
