@@ -211,6 +211,9 @@ void MainThread::search() {
   bestPreviousScore = bestThread->rootMoves[0].score;
   bestPreviousAverageScore = bestThread->rootMoves[0].averageScore;
 
+  for (Thread* th : Threads)
+    th->previousDepth = bestThread->completedDepth;
+
   // Send again PV info if we have a new best thread
   if (bestThread != this)
       sync_cout << UCI::pv(bestThread->rootPos, bestThread->completedDepth, -VALUE_INFINITE, VALUE_INFINITE) << sync_endl;
@@ -411,9 +414,7 @@ void Thread::search() {
           // If the bestMove is stable over several iterations, reduce time accordingly
           timeReduction = lastBestMoveDepth + 10 < completedDepth ? 1.63 : 0.73;
           double reduction = (1.56 + mainThread->previousTimeReduction) / (2.20 * timeReduction);
-          double bestMoveInstability = 1.073 + std::max(1.0, 2.25 - 9.9 / rootDepth)
-                                              * totBestMoveChanges / Threads.size();
-
+          double bestMoveInstability = 1 + 1.7 * totBestMoveChanges / Threads.size();
           int complexity = mainThread->complexityAverage.value();
           double complexPosition = std::clamp(1.0 + (complexity - 326) / 1618.1, 0.5, 1.5);
 
@@ -559,6 +560,7 @@ namespace {
     (ss+1)->ttPv         = false;
     (ss+1)->excludedMove = bestMove = MOVE_NONE;
     (ss+2)->killers[0]   = (ss+2)->killers[1] = MOVE_NONE;
+    (ss+2)->cutoffCnt    = 0;
     ss->doubleExtensions = (ss-1)->doubleExtensions;
     Square prevSq        = to_sq((ss-1)->currentMove);
 
@@ -1021,7 +1023,7 @@ namespace {
       // a reduced search on all the other moves but the ttMove and if the
       // result is lower than ttValue minus a margin, then we will extend the ttMove.
       if (  !rootNode
-          &&  depth >= 4 + 2 * (PvNode && tte->is_pv())
+          &&  depth >= 4 - (thisThread->previousDepth > 27) + 2 * (PvNode && tte->is_pv())
           &&  move == ttMove
           && !excludedMove // Avoid recursive singular search
           &&  ttValue != VALUE_NONE
@@ -1114,6 +1116,9 @@ namespace {
               && !likelyFailLow)
               r -= 2;
 
+          if (gameCycle)
+              r -= 2;
+
           // Decrease reduction if opponent's move count is high (~1 Elo)
           if ((ss-1)->moveCount > 7)
               r--;
@@ -1135,6 +1140,10 @@ namespace {
           if (PvNode)
               r -= 1 + 15 / ( 3 + depth );
 
+          // Increase reduction if next ply has a lot of fail high else reset count to 0
+          if ((ss+1)->cutoffCnt > 3 && !PvNode)
+              r++;
+
           ss->statScore =  thisThread->mainHistory[us][from_to(move)]
                          + (*contHist[0])[movedPiece][to_sq(move)]
                          + (*contHist[1])[movedPiece][to_sq(move)]
@@ -1149,7 +1158,7 @@ namespace {
           // deeper than the first move (this may lead to hidden double extensions).
           int deeper =   r >= -1                   ? 0
                        : moveCount <= 4            ? 1
-                       : PvNode && depth > 3       ? 1
+                       : PvNode                    ? 1
                        : cutNode && moveCount <= 8 ? 1
                        :                             0;
 
@@ -1259,14 +1268,30 @@ namespace {
                   update_pv(ss->pv, move, (ss+1)->pv);
 
               if (PvNode && value < beta) // Update alpha! Always alpha < beta
+              {
                   alpha = value;
+
+                  // Reduce other moves if we have found at least one score improvement
+                  if (   depth > 2
+                      && depth < 7
+                      && !gameCycle
+                      && beta  <  VALUE_KNOWN_WIN
+                      && alpha > -VALUE_KNOWN_WIN)
+                     depth -= 1;
+
+                  assert(depth > 0);
+              }
               else
               {
+                  ss->cutoffCnt++;
                   assert(value >= beta); // Fail high
                   break;
               }
           }
       }
+      else
+         ss->cutoffCnt = 0;
+
 
       // If the move is worse than some previously searched move, remember it to update its stats later
       if (move != bestMove)
