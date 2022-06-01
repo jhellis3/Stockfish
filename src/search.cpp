@@ -490,7 +490,7 @@ namespace {
     bestValue           = -VALUE_INFINITE;
     gameCycle           = kingDanger = false;
     rootDepth           = thisThread->rootDepth;
-    ourMove             = !(ss->ply & 1);
+    ourMove             = thisThread->nmpGuard ? (ss->ply & 1) : !(ss->ply & 1);
 
     // Check for the available remaining time
     if (thisThread == Threads.main())
@@ -651,6 +651,7 @@ namespace {
     }
 
     CapturePieceToHistory& captureHistory = thisThread->captureHistory;
+    kingDanger = ourMove ? false : pos.king_danger();
 
     // Step 6. Static evaluation of the position
     if (ss->inCheck)
@@ -706,12 +707,9 @@ namespace {
     // Begin early pruning.
     if (   !PvNode
         && (ourMove || !excludedMove)
-        && !thisThread->nmpGuard
+        && !thisThread->nmpGuardV
         &&  abs(eval) < 2 * VALUE_KNOWN_WIN)
     {
-       if (rootDepth > 10 && !ourMove)
-           kingDanger = pos.king_danger();
-
        // Step 7. Razoring.
        // If eval is really low check with qsearch if it can exceed alpha, if it can't,
        // return a fail low.
@@ -734,8 +732,8 @@ namespace {
            return eval;
 
        // Step 9. Null move search with verification search (~22 Elo)
-       if (   (ss-1)->currentMove != MOVE_NULL
-           && (ss-1)->statScore < 14695
+       if (   !thisThread->nmpGuard
+           &&  (ss-1)->statScore < 14695
            && !gameCycle
            &&  beta < VALUE_MATE_IN_MAX_PLY
            &&  eval >= beta
@@ -759,9 +757,9 @@ namespace {
            ss->continuationHistory = &thisThread->continuationHistory[0][0][NO_PIECE][0];
 
            pos.do_null_move(st);
-
+           thisThread->nmpGuard = true;
            Value nullValue = -search<NonPV>(pos, ss+1, -beta, -beta+1, depth-R, !cutNode);
-
+           thisThread->nmpGuard = false;
            pos.undo_null_move();
 
            if (nullValue >= beta)
@@ -769,15 +767,15 @@ namespace {
                // Do not return unproven mate or TB scores
                nullValue = std::min(nullValue, VALUE_MATE_IN_MAX_PLY);
 
-               if (abs(beta) < VALUE_KNOWN_WIN && depth < 11 && beta <= qsearch<NonPV>(pos, ss, beta-1, beta))
+               if (   abs(beta) < VALUE_KNOWN_WIN
+                   && depth < 11
+                   && beta <= qsearch<NonPV>(pos, ss, beta-1, beta))
                    return nullValue;
 
                // Do verification search at high depths
-               thisThread->nmpGuard = true;
-
+               thisThread->nmpGuardV = true;
                Value v = search<NonPV>(pos, ss, beta-1, beta, depth-R, false);
-
-               thisThread->nmpGuard = false;
+               thisThread->nmpGuardV = false;
 
                if (v >= beta)
                    return nullValue;
@@ -920,7 +918,7 @@ namespace {
       givesCheck = pos.gives_check(move);
       isMate = false;
 
-      if (givesCheck)
+      if (givesCheck && ourMove)
       {
           pos.do_move(move, st, givesCheck);
           isMate = MoveList<LEGAL>(pos).size() == 0;
@@ -950,8 +948,7 @@ namespace {
 
       Value delta = beta - alpha;
 
-      bool lmPrunable = (   rootDepth < 11
-                         || !ourMove
+      bool lmPrunable = (  !ourMove
                          || ss->ply > 6
                          || (ss-1)->moveCount > 1
                          || (ss-3)->moveCount > 1
@@ -1025,6 +1022,7 @@ namespace {
       if (  !rootNode
           &&  depth >= 4 - (thisThread->previousDepth > 27) + 2 * (PvNode && tte->is_pv())
           &&  move == ttMove
+          &&  ttValue > -VALUE_KNOWN_WIN / 2
           && !excludedMove // Avoid recursive singular search
           &&  ttValue != VALUE_NONE
           &&  abs(beta) < VALUE_MATE_IN_MAX_PLY

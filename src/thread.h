@@ -64,7 +64,7 @@ public:
   std::atomic<uint64_t> nodes, tbHits, bestMoveChanges;
   Value bestValue;
   int selDepth;
-  bool nmpGuard;
+  bool nmpGuard, nmpGuardV;
 
   Position rootPos;
   StateInfo rootState;
