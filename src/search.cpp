@@ -491,7 +491,7 @@ namespace {
     bestValue           = -VALUE_INFINITE;
     gameCycle           = kingDanger = false;
     rootDepth           = thisThread->rootDepth;
-    ourMove             = thisThread->nmpGuard ? (ss->ply & 1) : !(ss->ply & 1);
+    ourMove             = !(ss->ply & 1);
 
     // Check for the available remaining time
     if (thisThread == Threads.main())
