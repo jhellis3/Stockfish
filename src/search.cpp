@@ -478,7 +478,7 @@ namespace {
     Value bestValue, value, ttValue, eval, probCutBeta;
     bool givesCheck, improving, didLMR, priorCapture, isMate, gameCycle;
     bool capture, doFullDepthSearch, moveCountPruning,
-         ttCapture, kingDanger, ourMove;
+         ttCapture, kingDanger, ourMove, nullParity;
     Piece movedPiece;
     int moveCount, captureCount, quietCount, improvement, complexity, rootDepth;
 
@@ -492,6 +492,7 @@ namespace {
     gameCycle           = kingDanger = false;
     rootDepth           = thisThread->rootDepth;
     ourMove             = !(ss->ply & 1);
+    nullParity          = (ourMove == thisThread->nmpSide);
 
     // Check for the available remaining time
     if (thisThread == Threads.main())
@@ -715,6 +716,7 @@ namespace {
        // If eval is really low check with qsearch if it can exceed alpha, if it can't,
        // return a fail low.
        if (   depth <= 7
+           && (alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY || !ourMove)
            && eval < alpha - 348 - 258 * depth * depth)
        {
         value = qsearch<NonPV>(pos, ss, alpha - 1, alpha);
@@ -727,6 +729,7 @@ namespace {
            && !ss->ttPv
            && !kingDanger
            && !gameCycle
+           && !(thisThread->nmpGuard && nullParity)
            &&  abs(alpha) < VALUE_KNOWN_WIN
            &&  eval >= beta
            &&  eval - futility_margin(depth, improving) - (ss-1)->statScore / 256 >= beta)
@@ -745,6 +748,8 @@ namespace {
            && (rootDepth < 11 || ourMove || MoveList<LEGAL>(pos).size() > 5))
        {
            assert(eval - beta >= 0);
+
+           thisThread->nmpSide = ourMove;
 
            // Null move dynamic reduction based on depth and value
            Depth R = std::min(int(eval - beta) / 147, 5) + depth / 3 + 4 - (complexity > 753);
@@ -858,6 +863,8 @@ namespace {
         && !PvNode
         && depth >= 2
         && ttCapture
+        && !(thisThread->nmpGuard && nullParity)
+        && !(thisThread->nmpGuardV && nullParity)
         && (ttBound & BOUND_LOWER)
         && ttDepth >= depth - 3
         && ttValue >= probCutBeta
@@ -919,7 +926,7 @@ namespace {
       givesCheck = pos.gives_check(move);
       isMate = false;
 
-      if (givesCheck && ourMove)
+      if (givesCheck && ourMove && moveCount > 1)
       {
           pos.do_move(move, st, givesCheck);
           isMate = MoveList<LEGAL>(pos).size() == 0;
