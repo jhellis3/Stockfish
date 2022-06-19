@@ -926,7 +926,7 @@ namespace {
       givesCheck = pos.gives_check(move);
       isMate = false;
 
-      if (givesCheck && ourMove && moveCount > 1)
+      if (givesCheck && moveCount > 1)
       {
           pos.do_move(move, st, givesCheck);
           isMate = MoveList<LEGAL>(pos).size() == 0;
@@ -950,6 +950,10 @@ namespace {
       }
       else
       {
+      // If we already have a mate in 1 from the current position and the current
+      // move isn't a mate in 1, continue as there is no point to searching it.
+      if (bestValue >= mate_in(ss->ply+1))
+          continue;
 
       // Calculate new depth for this move
       newDepth = depth - 1;
@@ -966,6 +970,7 @@ namespace {
       if (  !PvNode
           && (ss->ply > 2 || lmPrunable)
           && pos.non_pawn_material(us)
+          && (bestValue < VALUE_MATE_IN_MAX_PLY || !ourMove)
           && bestValue > VALUE_MATED_IN_MAX_PLY)
       {
           // Skip quiet moves if movecount exceeds our FutilityMoveCount threshold (~7 Elo)
@@ -1030,10 +1035,10 @@ namespace {
       if (  !rootNode
           &&  depth >= 4 - (thisThread->previousDepth > 27) + 2 * (PvNode && tte->is_pv())
           &&  move == ttMove
+          &&  alpha > VALUE_MATED_IN_MAX_PLY + MAX_PLY
           &&  ttValue > -VALUE_KNOWN_WIN / 2
           && !excludedMove // Avoid recursive singular search
           &&  ttValue != VALUE_NONE
-          &&  abs(beta) < VALUE_MATE_IN_MAX_PLY
           && (ttBound & BOUND_LOWER)
           &&  ttDepth >= depth - 3)
       {
@@ -1066,11 +1071,11 @@ namespace {
                 return singularBeta;
 
             // If the eval of ttMove is greater than beta, we reduce it (negative extension)
-            else if (ttValue >= beta && (ss-1)->moveCount > 1 && !gameCycle)
+            else if (ttValue >= beta && (ss-1)->moveCount > 1 && !gameCycle && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
                      extension = -2;
 
             // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
-            else if (ttValue <= alpha && ttValue <= value)
+            else if (ttValue <= alpha && ttValue <= value && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
                      extension = -1;
           }
       }
