@@ -91,7 +91,7 @@ namespace {
 
   Value value_to_tt(Value v, int ply);
   Value value_from_tt(Value v, int ply, int r50c);
-  void update_pv(Move* pv, Move move, Move* childPv);
+  void update_pv(Move* pv, Move move, const Move* childPv);
   void update_continuation_histories(Stack* ss, Piece pc, Square to, int bonus);
   void update_quiet_stats(const Position& pos, Stack* ss, Move move, int bonus);
   void update_all_stats(const Position& pos, Stack* ss, Move bestMove, Value bestValue, Value beta, Square prevSq,
@@ -579,11 +579,10 @@ namespace {
         && ss->ttHit
         && !gameCycle
         && (!ourMove || beta < VALUE_MATE_IN_MAX_PLY)
-        && ttDepth > depth - (thisThread->id() % 2 == 1)
+        && tte->depth() > depth - ((int)thisThread->id() & 0x1)
         && ttValue != VALUE_NONE // Possible in case of TT access race
         && (ttValue != VALUE_DRAW || VALUE_DRAW >= beta)
-        && (ttValue >= beta ? (ttBound & BOUND_LOWER)
-                            : (ttBound & BOUND_UPPER)))
+        && (tte->bound() & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
     {
         // If ttMove is quiet, update move sorting heuristics on TT hit (~1 Elo)
         if (ttMove)
@@ -830,14 +829,8 @@ namespace {
 
                    if (value >= probCutBeta)
                    {
-                       // if transposition table doesn't have equal or more deep info write probCut data into it
-                       if (   !ss->ttHit
-                           ||  ttValue == VALUE_NONE
-                           ||  ttDepth < depth - 3)
-                       {
-                           tte->save(posKey, value_to_tt(value, ss->ply), ttPv,
-                                     BOUND_LOWER, depth - 3, move, ss->staticEval);
-                       }
+                       tte->save(posKey, value_to_tt(value, ss->ply), ttPv,
+                                 BOUND_LOWER, depth - 3, move, ss->staticEval);
 
                        return value;
                    }
@@ -1144,7 +1137,7 @@ namespace {
 
           // Decrease reduction for PvNodes based on depth
           if (PvNode)
-              r -= 1 + 15 / ( 3 + depth );
+              r -= 1 + 15 / (3 + depth);
 
           // Increase reduction if next ply has a lot of fail high else reset count to 0
           if ((ss+1)->cutoffCnt > 3 && !PvNode)
@@ -1446,8 +1439,7 @@ namespace {
         && tte->depth() >= ttDepth
         && ttValue != VALUE_NONE // Only in case of TT access race
         && (ttValue != VALUE_DRAW || VALUE_DRAW >= beta)
-        && (ttValue >= beta ? (ttBound & BOUND_LOWER)
-                            : (ttBound & BOUND_UPPER)))
+        && (tte->bound() & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
         return ttValue;
 
     // Evaluate the position statically
@@ -1568,7 +1560,7 @@ namespace {
           continue;
 
       // movecount pruning for quiet check evasions
-      if (  bestValue > VALUE_MATED_IN_MAX_PLY
+      if (   bestValue > VALUE_MATED_IN_MAX_PLY
           && quietCheckEvasions > 1
           && !capture
           && ss->inCheck)
@@ -1673,7 +1665,7 @@ namespace {
 
   // update_pv() adds current move and appends child pv[]
 
-  void update_pv(Move* pv, Move move, Move* childPv) {
+  void update_pv(Move* pv, Move move, const Move* childPv) {
 
     for (*pv++ = move; childPv && *childPv != MOVE_NONE; )
         *pv++ = *childPv++;
@@ -1686,19 +1678,18 @@ namespace {
   void update_all_stats(const Position& pos, Stack* ss, Move bestMove, Value bestValue, Value beta, Square prevSq,
                         Move* quietsSearched, int quietCount, Move* capturesSearched, int captureCount, Depth depth) {
 
-    int bonus1, bonus2;
     Color us = pos.side_to_move();
     Thread* thisThread = pos.this_thread();
     CapturePieceToHistory& captureHistory = thisThread->captureHistory;
     Piece moved_piece = pos.moved_piece(bestMove);
     PieceType captured = type_of(pos.piece_on(to_sq(bestMove)));
-
-    bonus1 = stat_bonus(depth + 1);
-    bonus2 = bestValue > beta + PawnValueMg ? bonus1               // larger bonus
-                                            : stat_bonus(depth);   // smaller bonus
+    int bonus1 = stat_bonus(depth + 1);
 
     if (!pos.capture(bestMove))
     {
+        int bonus2 = bestValue > beta + PawnValueMg ? bonus1               // larger bonus
+                                                    : stat_bonus(depth);   // smaller bonus
+
         // Increase stats for the best move in case it was a quiet move
         update_quiet_stats(pos, ss, bestMove, bonus2);
 
