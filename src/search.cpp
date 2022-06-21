@@ -273,7 +273,7 @@ void Thread::search() {
 
   multiPV = std::min(multiPV, rootMoves.size());
 
-  complexityAverage.set(202, 1);
+  complexityAverage.set(174, 1);
 
   // Iterative deepening loop until requested to stop or the target depth is reached
   while (   ++rootDepth < MAX_PLY
@@ -417,7 +417,7 @@ void Thread::search() {
           double reduction = (1.56 + mainThread->previousTimeReduction) / (2.20 * timeReduction);
           double bestMoveInstability = 1 + 1.7 * totBestMoveChanges / Threads.size();
           int complexity = mainThread->complexityAverage.value();
-          double complexPosition = std::clamp(1.0 + (complexity - 326) / 1618.1, 0.5, 1.5);
+          double complexPosition = std::clamp(1.0 + (complexity - 277) / 1819, 0.5, 1.5);
 
           TimePoint elapsedT = Time.elapsed();
           TimePoint optimumT = Time.optimum();
@@ -668,8 +668,11 @@ namespace {
     if (ss->ttHit)
     {
         // Never assume anything about values stored in TT
-        if ((ss->staticEval = eval = tte->eval()) == VALUE_NONE)
-            ss->staticEval = eval = evaluate(pos);
+        ss->staticEval = eval = tte->eval();
+        if (eval == VALUE_NONE)
+            ss->staticEval = eval = evaluate(pos, &complexity);
+        else // Fall back to (semi)classical complexity for TT hits, the NNUE complexity is lost
+            complexity = abs(ss->staticEval - pos.psq_eg_stm());
 
         // Can ttValue be used as a better position evaluation? (~4 Elo)
         if (    ttValue != VALUE_NONE
@@ -679,11 +682,13 @@ namespace {
     }
     else
     {
-        ss->staticEval = eval = evaluate(pos);
+        ss->staticEval = eval = evaluate(pos, &complexity);
 
         if (!excludedMove)
             tte->save(posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, MOVE_NONE, eval);
     }
+
+    thisThread->complexityAverage.update(complexity);
 
     // Use static evaluation difference to improve quiet move ordering (~3 Elo)
     if (is_ok((ss-1)->currentMove) && !(ss-1)->inCheck && !priorCapture)
@@ -699,11 +704,7 @@ namespace {
     improvement =   (ss-2)->staticEval != VALUE_NONE ? ss->staticEval - (ss-2)->staticEval
                   : (ss-4)->staticEval != VALUE_NONE ? ss->staticEval - (ss-4)->staticEval
                   :                                    175;
-
     improving = improvement > 0;
-    complexity = abs(ss->staticEval - (us == WHITE ? eg_value(pos.psq_score()) : -eg_value(pos.psq_score())));
-
-    thisThread->complexityAverage.update(complexity);
 
     // Begin early pruning.
     if (   !PvNode
@@ -741,7 +742,7 @@ namespace {
            &&  beta < VALUE_MATE_IN_MAX_PLY
            &&  eval >= beta
            &&  eval >= ss->staticEval
-           &&  ss->staticEval >= beta - 15 * depth - improvement / 15 + 198 + complexity / 28
+           &&  ss->staticEval >= beta - 15 * depth - improvement / 15 + 201 + complexity / 24
            &&  pos.non_pawn_material(us)
            && !kingDanger
            && (rootDepth < 11 || ourMove || MoveList<LEGAL>(pos).size() > 5))
@@ -751,7 +752,7 @@ namespace {
            thisThread->nmpSide = ourMove;
 
            // Null move dynamic reduction based on depth and value
-           Depth R = std::min(int(eval - beta) / 147, 5) + depth / 3 + 4 - (complexity > 753);
+           Depth R = std::min(int(eval - beta) / 147, 5) + depth / 3 + 4 - (complexity > 650);
 
            if (   depth < 11
                || ttValue >= beta
@@ -801,8 +802,6 @@ namespace {
        {
            assert(probCutBeta < VALUE_INFINITE);
            MovePicker mp(pos, ttMove, probCutBeta - ss->staticEval, depth - 3, &captureHistory);
-           bool ttPv = ss->ttPv;
-           ss->ttPv = false;
 
            while ((move = mp.next_move()) != MOVE_NONE)
                if (move != excludedMove)
@@ -829,14 +828,12 @@ namespace {
 
                    if (value >= probCutBeta)
                    {
-                       tte->save(posKey, value_to_tt(value, ss->ply), ttPv,
+                       tte->save(posKey, value_to_tt(value, ss->ply), ss->ttPv,
                                  BOUND_LOWER, depth - 3, move, ss->staticEval);
 
                        return value;
                    }
                }
-
-           ss->ttPv = ttPv;
        }
     } // End early Pruning
 
@@ -1152,15 +1149,10 @@ namespace {
           // Decrease/increase reduction for moves with a good/bad history (~30 Elo)
           r -= ss->statScore / 15914;
 
-          // In general we want to cap the LMR depth search at newDepth. But if reductions
-          // are really negative and movecount is low, we allow this move to be searched
-          // deeper than the first move (this may lead to hidden double extensions).
-          int deeper =   r >= -1                   ? 0
-                       : moveCount <= 4            ? 1
-                       : PvNode || cutNode         ? 1
-                       :                             0;
-
-          Depth d = std::clamp(newDepth - r, 1, newDepth + deeper);
+          // In general we want to cap the LMR depth search at newDepth, but when
+          // reduction is negative, we allow this move a limited search extension
+          // beyond the first move depth. This may lead to hidden double extensions.
+          Depth d = std::clamp(newDepth - r, 1, newDepth + 1);
 
           value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, d, true);
 
