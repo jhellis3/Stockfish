@@ -716,7 +716,7 @@ namespace {
        // If eval is really low check with qsearch if it can exceed alpha, if it can't,
        // return a fail low.
        if (   depth <= 7
-           && (alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY || !ourMove)
+           && !ourMove
            && eval < alpha - 348 - 258 * depth * depth)
        {
         value = qsearch<NonPV>(pos, ss, alpha - 1, alpha);
@@ -1057,8 +1057,8 @@ namespace {
           // a soft bound.
           else if (!PvNode)
           {
-            if (singularBeta >= beta)
-                return singularBeta;
+            if (singularBeta >= beta && (singularBeta < VALUE_MATE_IN_MAX_PLY || (ttBound & BOUND_UPPER)))
+                return (ttBound & BOUND_UPPER) ? ttValue : singularBeta;
 
             // If the eval of ttMove is greater than beta, we reduce it (negative extension)
             else if (ttValue >= beta && (ss-1)->moveCount > 1 && !gameCycle && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
