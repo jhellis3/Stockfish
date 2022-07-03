@@ -842,7 +842,7 @@ namespace {
         && depth >= 3
         && !gameCycle
         && !ttMove
-        && ((ss-1)->moveCount > 1 || !ourMove))
+        && (ss-1)->moveCount > 1)
         depth -= 2;
 
     } // In check search starts here
@@ -853,6 +853,7 @@ namespace {
         && !PvNode
         && depth >= 2
         && ttCapture
+        && !kingDanger
         && !(thisThread->nmpGuard && nullParity)
         && !(thisThread->nmpGuardV && nullParity)
         && (ttBound & BOUND_LOWER)
