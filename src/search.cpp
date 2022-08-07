@@ -80,7 +80,7 @@ namespace {
 
   // History and stats update bonus, based on depth
   int stat_bonus(Depth d) {
-    return std::min((9 * d + 270) * d - 311 , 2145);
+    return std::min((8 * d + 240) * d - 276 , 1907);
   }
 
   template <NodeType nodeType>
@@ -417,7 +417,7 @@ void Thread::search() {
           double reduction = (1.56 + mainThread->previousTimeReduction) / (2.20 * timeReduction);
           double bestMoveInstability = 1 + 1.7 * totBestMoveChanges / Threads.size();
           int complexity = mainThread->complexityAverage.value();
-          double complexPosition = std::clamp(1.0 + (complexity - 277) / 1819, 0.5, 1.5);
+          double complexPosition = std::min(1.0 + (complexity - 277) / 1819.1, 1.5);
 
           TimePoint elapsedT = Time.elapsed();
           TimePoint optimumT = Time.optimum();
@@ -478,7 +478,7 @@ namespace {
     Value bestValue, value, ttValue, eval, probCutBeta;
     bool givesCheck, improving, didLMR, priorCapture, isMate, gameCycle;
     bool capture, doFullDepthSearch, moveCountPruning,
-         ttCapture, kingDanger, ourMove, nullParity;
+         ttCapture, kingDanger, ourMove, nullParity, singularQuietLMR;
     Piece movedPiece;
     int moveCount, captureCount, quietCount, improvement, complexity, rootDepth;
 
@@ -579,7 +579,7 @@ namespace {
         && ss->ttHit
         && !gameCycle
         && (!ourMove || beta < VALUE_MATE_IN_MAX_PLY)
-        && tte->depth() > depth - ((int)thisThread->id() & 0x1)
+        && tte->depth() > depth - ((int)thisThread->id() & 0x1) - (tte->bound() == BOUND_EXACT)
         && ttValue != VALUE_NONE // Possible in case of TT access race
         && (ttValue != VALUE_DRAW || VALUE_DRAW >= beta)
         && (tte->bound() & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
@@ -876,7 +876,7 @@ namespace {
                                       ss->killers);
 
     value = bestValue;
-    moveCountPruning = false;
+    moveCountPruning = singularQuietLMR = false;
 
     // Indicate PvNodes that will probably fail low if the node was searched
     // at a depth equal or greater than the current depth, and the result of this search was a fail low.
@@ -999,7 +999,7 @@ namespace {
                   && history < -3875 * (depth - 1))
                   continue;
 
-              history += thisThread->mainHistory[us][from_to(move)];
+              history += 2 * thisThread->mainHistory[us][from_to(move)];
 
               // Futility pruning: parent node (~9 Elo)
               if (   !ss->inCheck
@@ -1043,12 +1043,13 @@ namespace {
           if (value < singularBeta)
           {
               extension = 1;
+              singularQuietLMR = !ttCapture;
 
-          // Avoid search explosion by limiting the number of double extensions
-          if (  !PvNode
-              && value < singularBeta - 26
-              && ss->doubleExtensions < 4)
-              extension = 2;
+              // Avoid search explosion by limiting the number of double extensions
+              if (  !PvNode
+                  && value < singularBeta - 26
+                  && ss->doubleExtensions < 4)
+                  extension = 2;
           }
 
           // Multi-cut pruning
@@ -1126,7 +1127,7 @@ namespace {
               r--;
 
           // Increase reduction for cut nodes (~3 Elo)
-          if (cutNode && move != ss->killers[0])
+          if (cutNode)
               r += 2;
 
           // Increase reduction if ttMove is a capture (~3 Elo)
@@ -1137,11 +1138,15 @@ namespace {
           if (PvNode)
               r -= 1 + 15 / (3 + depth);
 
+          // Decrease reduction if ttMove has been singularly extended (~1 Elo)
+          if (singularQuietLMR)
+              r--;
+
           // Increase reduction if next ply has a lot of fail high else reset count to 0
           if ((ss+1)->cutoffCnt > 3 && !PvNode)
               r++;
 
-          ss->statScore =  thisThread->mainHistory[us][from_to(move)]
+          ss->statScore =  2 * thisThread->mainHistory[us][from_to(move)]
                          + (*contHist[0])[movedPiece][to_sq(move)]
                          + (*contHist[1])[movedPiece][to_sq(move)]
                          + (*contHist[3])[movedPiece][to_sq(move)]

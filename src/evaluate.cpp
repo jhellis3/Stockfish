@@ -1038,38 +1038,6 @@ make_v:
     return (pos.side_to_move() == WHITE ? v : -v);
   }
 
-
-  /// Fisher Random Chess: correction for cornered bishops, to fix chess960 play with NNUE
-
-  Value fix_FRC(const Position& pos) {
-
-    constexpr Bitboard Corners =  1ULL << SQ_A1 | 1ULL << SQ_H1 | 1ULL << SQ_A8 | 1ULL << SQ_H8;
-
-    if (!(pos.pieces(BISHOP) & Corners))
-        return VALUE_ZERO;
-
-    int correction = 0;
-
-    if (   pos.piece_on(SQ_A1) == W_BISHOP
-        && pos.piece_on(SQ_B2) == W_PAWN)
-        correction -= CorneredBishop;
-
-    if (   pos.piece_on(SQ_H1) == W_BISHOP
-        && pos.piece_on(SQ_G2) == W_PAWN)
-        correction -= CorneredBishop;
-
-    if (   pos.piece_on(SQ_A8) == B_BISHOP
-        && pos.piece_on(SQ_B7) == B_PAWN)
-        correction += CorneredBishop;
-
-    if (   pos.piece_on(SQ_H8) == B_BISHOP
-        && pos.piece_on(SQ_G7) == B_PAWN)
-        correction += CorneredBishop;
-
-    return pos.side_to_move() == WHITE ?  Value(3 * correction)
-                                       : -Value(3 * correction);
-  }
-
 } // namespace Eval
 
 
@@ -1092,19 +1060,15 @@ Value Eval::evaluate(const Position& pos, int* complexity) {
 
        if (complexity) // Return hybrid NNUE complexity to caller
            *complexity = nnueComplexity;
-
-       if (pos.is_chess960())
-           v += fix_FRC(pos);
   }
+  // When not using NNUE, return classical complexity to caller
+  else if (complexity)
+        *complexity = abs(v - psq);
 
   v = v * std::max(1, (101 - pos.rule50_count())) / 101;
 
   // Do not return evals greater than a TB result
   v = std::clamp(v, -VALUE_TB_WIN + 8 * PawnValueEg, VALUE_TB_WIN - 8 * PawnValueEg);
-
-  // When not using NNUE, return classical complexity to caller
-  if (complexity && !useNNUE)
-      *complexity = abs(v - psq);
 
   return v;
 }
