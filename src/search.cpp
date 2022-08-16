@@ -525,13 +525,12 @@ namespace {
         // if the opponent had an alternative move earlier to this position.
         if (pos.has_game_cycle(ss->ply))
         {
-            if (VALUE_DRAW >= beta)
-            {
-                tte->save(posKey, VALUE_DRAW, ss->ttPv, BOUND_UPPER,
-                          depth, MOVE_NONE, VALUE_NONE);
+            tte->save(posKey, VALUE_DRAW, ss->ttPv, BOUND_EXACT,
+                      depth, MOVE_NONE, VALUE_NONE);
 
+            if (VALUE_DRAW >= beta)
                 return VALUE_DRAW;
-            }
+
             gameCycle = true;
             alpha = std::max(alpha, VALUE_DRAW);
         }
@@ -853,6 +852,7 @@ namespace {
         && !PvNode
         && depth >= 2
         && ttCapture
+        && !gameCycle
         && !kingDanger
         && !(thisThread->nmpGuard && nullParity)
         && !(thisThread->nmpGuardV && nullParity)
@@ -1063,11 +1063,11 @@ namespace {
                 return (ttBound & BOUND_UPPER) ? ttValue : singularBeta;
 
             // If the eval of ttMove is greater than beta, we reduce it (negative extension)
-            else if (ttValue >= beta && (ss-1)->moveCount > 1 && !gameCycle && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
+            else if (!gameCycle && ttValue >= beta && (ss-1)->moveCount > 1 && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
                      extension = -2;
 
             // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
-            else if (ttValue <= alpha && ttValue <= value && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
+            else if (!gameCycle && ttValue <= alpha && ttValue <= value && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
                      extension = -1;
           }
       }
@@ -1106,6 +1106,7 @@ namespace {
       // cases where we extend a son if it has good chances to be "interesting".
       if (    depth >= 2
           && !lateKingDanger
+          && !gameCycle
           &&  thisThread->selDepth > rootDepth / 3
           &&  moveCount > 1
           && (!PvNode || ss->ply > 1)
@@ -1117,9 +1118,6 @@ namespace {
           // and node is not likely to fail low. (~3 Elo)
           if (   ss->ttPv
               && !likelyFailLow)
-              r -= 2;
-
-          if (gameCycle)
               r -= 2;
 
           // Decrease reduction if opponent's move count is high (~1 Elo)
@@ -1198,6 +1196,9 @@ namespace {
       {
           (ss+1)->pv = pv;
           (ss+1)->pv[0] = MOVE_NONE;
+
+          if (gameCycle && (ss-1)->moveCount < 2)
+              newDepth += 2;
 
           value = -search<PV>(pos, ss+1, -beta, -alpha,
                               std::min(maxNextDepth, newDepth), false);
