@@ -476,8 +476,8 @@ namespace {
     Depth extension, newDepth, ttDepth;
     Bound ttBound;
     Value bestValue, value, ttValue, eval, probCutBeta;
-    bool givesCheck, improving, didLMR, priorCapture, isMate, gameCycle;
-    bool capture, doFullDepthSearch, moveCountPruning,
+    bool givesCheck, improving, priorCapture, isMate, gameCycle;
+    bool capture, moveCountPruning,
          ttCapture, kingDanger, ourMove, nullParity, singularQuietLMR;
     Piece movedPiece;
     int moveCount, captureCount, quietCount, improvement, complexity, rootDepth;
@@ -578,7 +578,7 @@ namespace {
         && ss->ttHit
         && !gameCycle
         && (!ourMove || beta < VALUE_MATE_IN_MAX_PLY)
-        && tte->depth() > depth - ((int)thisThread->id() & 0x1) - (tte->bound() == BOUND_EXACT)
+        && tte->depth() > depth - (tte->bound() == BOUND_EXACT)
         && ttValue != VALUE_NONE // Possible in case of TT access race
         && (ttValue != VALUE_DRAW || VALUE_DRAW >= beta)
         && (tte->bound() & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
@@ -673,7 +673,7 @@ namespace {
         else // Fall back to (semi)classical complexity for TT hits, the NNUE complexity is lost
             complexity = abs(ss->staticEval - pos.psq_eg_stm());
 
-        // Can ttValue be used as a better position evaluation? (~4 Elo)
+        // ttValue can be used as a better position evaluation (~4 Elo)
         if (    ttValue != VALUE_NONE
             && (ttMove != MOVE_NONE || ttValue <= eval)
             && (ttBound & (ttValue > eval ? BOUND_LOWER : BOUND_UPPER)))
@@ -1096,11 +1096,9 @@ namespace {
       // Step 16. Make the move
       pos.do_move(move, st, givesCheck);
 
-      bool doDeeperSearch = false;
-
       bool lateKingDanger = (rootDepth > 10 && ourMove && ss->ply < 7 && pos.king_danger());
 
-      // Step 16. Late moves reduction / extension (LMR, ~98 Elo)
+      // Step 17. Late moves reduction / extension (LMR, ~98 Elo)
       // We use various heuristics for the sons of a node after the first son has
       // been searched. In general we would like to reduce them, but there are many
       // cases where we extend a son if it has good chances to be "interesting".
@@ -1160,25 +1158,12 @@ namespace {
 
           value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, d, true);
 
-          // If the son is reduced and fails high it will be re-searched at full depth
-          doFullDepthSearch = value > alpha && d < newDepth;
-          doDeeperSearch = value > (alpha + 78 + 11 * (newDepth - d));
-          didLMR = true;
-      }
-      else
-      {
-          doFullDepthSearch = !PvNode || moveCount > 1;
-          didLMR = false;
-      }
-
-      // Step 18. Full depth search when LMR is skipped or fails high
-      if (doFullDepthSearch)
-      {
-          value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, newDepth + doDeeperSearch, !cutNode);
-
-          // If the move passed LMR update its stats
-          if (didLMR)
+          // Do full depth search when reduced LMR search fails high
+          if (value > alpha && d < newDepth)
           {
+              const bool doDeeperSearch = value > (alpha + 78 + 11 * (newDepth - d));
+              value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, newDepth + doDeeperSearch, !cutNode);
+
               int bonus = value > alpha ?  stat_bonus(newDepth)
                                         : -stat_bonus(newDepth);
 
@@ -1187,6 +1172,12 @@ namespace {
 
               update_continuation_histories(ss, movedPiece, to_sq(move), bonus);
           }
+      }
+
+      // Step 18. Full depth search when LMR is skipped
+      else if (!PvNode || moveCount > 1)
+      {
+              value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, newDepth, !cutNode);
       }
 
       // For PV nodes only, do a full PV search on the first move or after a fail
