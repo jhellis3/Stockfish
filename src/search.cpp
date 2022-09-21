@@ -885,6 +885,12 @@ namespace {
                          && (ttBound & BOUND_UPPER)
                          && ttDepth >= depth;
 
+    bool lmPrunable = (  !ourMove
+                       || ss->ply > 6
+                       || (ss-1)->moveCount > 1
+                       || (ss-3)->moveCount > 1
+                       || (ss-5)->moveCount > 1);
+
     // Step 12. Loop through all pseudo-legal moves until no moves remain
     // or a beta cutoff occurs.
     while ((move = mp.next_move(moveCountPruning)) != MOVE_NONE)
@@ -950,12 +956,6 @@ namespace {
       newDepth = depth - 1;
 
       Value delta = beta - alpha;
-
-      bool lmPrunable = (  !ourMove
-                         || ss->ply > 6
-                         || (ss-1)->moveCount > 1
-                         || (ss-3)->moveCount > 1
-                         || (ss-5)->moveCount > 1);
 
       // Step 13. Pruning at shallow depth (~98 Elo). Depth conditions are important for mate finding.
       if (  !PvNode
