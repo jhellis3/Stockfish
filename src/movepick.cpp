@@ -158,9 +158,11 @@ void MovePicker::score() {
 template<MovePicker::PickType T, typename Pred>
 Move MovePicker::select(Pred filter) {
 
+  bool pickBest = (T == Best);
+
   while (cur < endMoves)
   {
-      if (T == Best)
+      if (pickBest)
           std::swap(*cur, *std::max_element(cur, endMoves));
 
       if (*cur != ttMove && filter() && pos.legal(*cur))

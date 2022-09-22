@@ -891,6 +891,30 @@ namespace {
                        || (ss-3)->moveCount > 1
                        || (ss-5)->moveCount > 1);
 
+    int lmrAdjustment =   ttCapture
+                        + 2 * cutNode
+                        + ((ss+1)->cutoffCnt > 3 && !PvNode)
+                        - 2 * (ss->ttPv && !likelyFailLow)
+                        - ((ss-1)->moveCount > 7)
+                        - 2 * PvNode;
+
+    bool allowLMR =     depth > 1
+                    && !gameCycle
+                    && (!PvNode || ss->ply > 1);
+
+    bool doSingular =    !rootNode
+                      && !excludedMove // Avoid recursive singular search
+                      &&  ttValue != VALUE_NONE
+                      && (ttBound & BOUND_LOWER)
+                      &&  alpha > VALUE_MATED_IN_MAX_PLY + MAX_PLY
+                      &&  ttValue > -VALUE_KNOWN_WIN / 2
+                      &&  ttDepth >= depth - 3
+                      &&  depth >= 4 - (thisThread->previousDepth > 24) + 2 * (PvNode && tte->is_pv());
+
+    bool doLMP =    !PvNode
+                 && (lmPrunable || ss->ply > 2)
+                 &&  pos.non_pawn_material(us);
+
     // Step 12. Loop through all pseudo-legal moves until no moves remain
     // or a beta cutoff occurs.
     while ((move = mp.next_move(moveCountPruning)) != MOVE_NONE)
@@ -923,7 +947,7 @@ namespace {
       givesCheck = pos.gives_check(move);
       isMate = false;
 
-      if (givesCheck && moveCount > 1)
+      if (givesCheck)
       {
           pos.do_move(move, st, givesCheck);
           isMate = MoveList<LEGAL>(pos).size() == 0;
@@ -954,13 +978,10 @@ namespace {
 
       // Calculate new depth for this move
       newDepth = depth - 1;
-
       Value delta = beta - alpha;
 
       // Step 13. Pruning at shallow depth (~98 Elo). Depth conditions are important for mate finding.
-      if (  !PvNode
-          && (ss->ply > 2 || lmPrunable)
-          && pos.non_pawn_material(us)
+      if (   doLMP
           && (bestValue < VALUE_MATE_IN_MAX_PLY || !ourMove)
           && bestValue > VALUE_MATED_IN_MAX_PLY)
       {
@@ -1020,15 +1041,8 @@ namespace {
       // then that move is singular and should be extended. To verify this we do
       // a reduced search on all the other moves but the ttMove and if the
       // result is lower than ttValue minus a margin, then we will extend the ttMove.
-      if (  !rootNode
-          &&  depth >= 4 - (thisThread->previousDepth > 24) + 2 * (PvNode && tte->is_pv())
-          &&  move == ttMove
-          &&  alpha > VALUE_MATED_IN_MAX_PLY + MAX_PLY
-          &&  ttValue > -VALUE_KNOWN_WIN / 2
-          && !excludedMove // Avoid recursive singular search
-          &&  ttValue != VALUE_NONE
-          && (ttBound & BOUND_LOWER)
-          &&  ttDepth >= depth - 3)
+      if (    doSingular
+          &&  move == ttMove)
       {
           Value singularBeta = std::max(ttValue - (3 + (ss->ttPv && !PvNode)) * depth, VALUE_MATED_IN_MAX_PLY);
           Depth singularDepth = (depth - 1) / 2;
@@ -1099,54 +1113,21 @@ namespace {
       // We use various heuristics for the sons of a node after the first son has
       // been searched. In general we would like to reduce them, but there are many
       // cases where we extend a son if it has good chances to be "interesting".
-      if (    depth >= 2
+      if (    allowLMR
           && !lateKingDanger
-          && !gameCycle
-          &&  thisThread->selDepth > rootDepth / 3
           &&  moveCount > 1
-          && (!PvNode || ss->ply > 1)
           && (!capture || (cutNode && (ss-1)->moveCount >1)))
       {
-          Depth r = reduction(improving, depth, moveCount, delta, thisThread->rootDelta);
-
-          // Decrease reduction if position is or has been on the PV
-          // and node is not likely to fail low. (~3 Elo)
-          if (   ss->ttPv
-              && !likelyFailLow)
-              r -= 2;
-
-          // Decrease reduction if opponent's move count is high (~1 Elo)
-          if ((ss-1)->moveCount > 7)
-              r--;
-
-          // Increase reduction for cut nodes (~3 Elo)
-          if (cutNode)
-              r += 2;
-
-          // Increase reduction if ttMove is a capture (~3 Elo)
-          if (ttCapture)
-              r++;
-
-          // Decrease reduction for PvNodes based on depth
-          if (PvNode)
-              r -= 1 + 11 / (3 + depth);
-
-          // Decrease reduction if ttMove has been singularly extended (~1 Elo)
-          if (singularQuietLMR)
-              r--;
-
-          // Increase reduction if next ply has a lot of fail high else reset count to 0
-          if ((ss+1)->cutoffCnt > 3 && !PvNode)
-              r++;
-
-          ss->statScore =  2 * thisThread->mainHistory[us][from_to(move)]
+         ss->statScore =  2 * thisThread->mainHistory[us][from_to(move)]
                          + (*contHist[0])[movedPiece][to_sq(move)]
                          + (*contHist[1])[movedPiece][to_sq(move)]
                          + (*contHist[3])[movedPiece][to_sq(move)]
                          - 4433;
 
-          // Decrease/increase reduction for moves with a good/bad history (~30 Elo)
-          r -= ss->statScore / 13628;
+          Depth r =   reduction(improving, depth, moveCount, delta, thisThread->rootDelta)
+                    + lmrAdjustment
+                    - singularQuietLMR
+                    - ss->statScore / 13628;
 
           // In general we want to cap the LMR depth search at newDepth, but when
           // reduction is negative, we allow this move a limited search extension
