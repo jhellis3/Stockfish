@@ -714,8 +714,7 @@ namespace {
        // Step 7. Razoring.
        // If eval is really low check with qsearch if it can exceed alpha, if it can't,
        // return a fail low.
-       if (   depth <= 7
-           && !ourMove
+       if (  !ourMove
            && eval < alpha - 369 - 254 * depth * depth)
        {
         value = qsearch<NonPV>(pos, ss, alpha - 1, alpha);
@@ -997,9 +996,9 @@ namespace {
               || givesCheck)
           {
               // Futility pruning for captures (~0 Elo)
-              if (   !pos.empty(to_sq(move))
-                  && !givesCheck
-                  && lmrDepth < 7 // was 3
+              if (   !givesCheck
+                  //&& !PvNode
+                  &&  lmrDepth < 7 // was 3
                   && !ss->inCheck
                   && ss->staticEval + 180 + 201 * lmrDepth + PieceValue[EG][pos.piece_on(to_sq(move))]
                    + captureHistory[movedPiece][to_sq(move)][type_of(pos.piece_on(to_sq(move)))] / 6 < alpha)
@@ -1127,6 +1126,7 @@ namespace {
           Depth r =   reduction(improving, depth, moveCount, delta, thisThread->rootDelta)
                     + lmrAdjustment
                     - singularQuietLMR
+                    - (depth > 9 && (mp.threatenedPieces & from_sq(move)))
                     - ss->statScore / 13628;
 
           // In general we want to cap the LMR depth search at newDepth, but when
@@ -1523,8 +1523,8 @@ namespace {
       if (   !capture
           && !PvNode
           &&  bestValue > VALUE_MATED_IN_MAX_PLY
-          && (*contHist[0])[pos.moved_piece(move)][to_sq(move)] < CounterMovePruneThreshold
-          && (*contHist[1])[pos.moved_piece(move)][to_sq(move)] < CounterMovePruneThreshold)
+          && (*contHist[0])[pos.moved_piece(move)][to_sq(move)] < 0
+          && (*contHist[1])[pos.moved_piece(move)][to_sq(move)] < 0)
           continue;
 
       // movecount pruning for quiet check evasions
