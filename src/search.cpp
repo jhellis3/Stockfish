@@ -1111,7 +1111,7 @@ namespace {
       if (    allowLMR
           && !lateKingDanger
           &&  moveCount > 1
-          && (!capture || (cutNode && (ss-1)->moveCount >1)))
+          && (!capture || (cutNode && (ss-1)->moveCount > 1)))
       {
          ss->statScore =  2 * thisThread->mainHistory[us][from_to(move)]
                          + (*contHist[0])[movedPiece][to_sq(move)]
@@ -1123,7 +1123,7 @@ namespace {
                     + lmrAdjustment
                     - singularQuietLMR
                     - (depth > 9 && (mp.threatenedPieces & from_sq(move)))
-                    - ss->statScore / 13628;
+                    - ss->statScore / (13628 + 4000 * (depth > 7 && depth < 19));
 
           // In general we want to cap the LMR depth search at newDepth, but when
           // reduction is negative, we allow this move a limited search extension
