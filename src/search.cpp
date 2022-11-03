@@ -1069,12 +1069,8 @@ namespace {
           // a soft bound.
           else if (!PvNode)
           {
-            if (singularBeta >= beta && (singularBeta < VALUE_MATE_IN_MAX_PLY || (ttBound & BOUND_UPPER)))
-                return (ttBound & BOUND_UPPER) ? ttValue : singularBeta;
-
-            // If the eval of ttMove is greater than beta, we reduce it (negative extension)
-            else if (!gameCycle && ttValue >= beta && (ss-1)->moveCount > 1 && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
-                     extension = -2;
+            if (ttValue >= beta)
+                return ttValue;
 
             // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
             else if (!gameCycle && ttValue <= alpha && ttValue <= value && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
