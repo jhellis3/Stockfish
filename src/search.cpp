@@ -1052,7 +1052,6 @@ namespace {
 
           if (value < singularBeta)
           {
-              extension = 1;
               singularQuietLMR = !ttCapture;
 
               // Avoid search explosion by limiting the number of double extensions
@@ -1060,6 +1059,8 @@ namespace {
                   && value < singularBeta - 25
                   && ss->doubleExtensions < 4)
                   extension = 2;
+              else
+                  extension = 1;
           }
 
           // Multi-cut pruning
@@ -1073,7 +1074,7 @@ namespace {
                 return ttValue;
 
             // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
-            else if (!gameCycle && ttValue <= alpha && ttValue <= value && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
+            else if (!gameCycle && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
                      extension = -1;
           }
       }
