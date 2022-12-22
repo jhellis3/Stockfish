@@ -642,7 +642,7 @@ namespace {
                     || (v >  drawScore && alpha < tbValue - 19))
                 {
                     tte->save(posKey, tbValue, ss->ttPv, v > drawScore ? BOUND_LOWER : v < -drawScore ? BOUND_UPPER : BOUND_EXACT,
-                              depth, MOVE_NONE, VALUE_NONE);
+                              v == 0 ? MAX_PLY : depth, MOVE_NONE, VALUE_NONE);
 
                     return tbValue;
                 }
