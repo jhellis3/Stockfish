@@ -118,7 +118,7 @@ vector<string> setup_bench(const Position& current, istream& is) {
   // Assign default values to missing arguments
   string ttSize    = (is >> token) ? token : "16";
   string threads   = (is >> token) ? token : "1";
-  string limit     = (is >> token) ? token : "11";
+  string limit     = (is >> token) ? token : "12";
   string fenFile   = (is >> token) ? token : "default";
   string limitType = (is >> token) ? token : "depth";
   string evalType  = (is >> token) ? token : "mixed";

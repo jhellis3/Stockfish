@@ -212,9 +212,6 @@ void MainThread::search() {
   bestPreviousScore = bestThread->rootMoves[0].score;
   bestPreviousAverageScore = bestThread->rootMoves[0].averageScore;
 
-  for (Thread* th : Threads)
-    th->previousDepth = bestThread->completedDepth;
-
   // Send again PV info if we have a new best thread
   if (bestThread != this)
       sync_cout << UCI::pv(bestThread->rootPos, bestThread->completedDepth) << sync_endl;
@@ -458,7 +455,6 @@ namespace {
 
     constexpr bool PvNode = nodeType != NonPV;
     constexpr bool rootNode = nodeType == Root;
-    const Depth maxNextDepth = rootNode ? depth : depth + 1;
 
     // Dive into quiescence search when the depth reaches zero
     if (depth <= 0)
@@ -511,7 +507,7 @@ namespace {
     // search to overwrite a previous full search TT value, so we use a different
     // position key in case of an excluded move.
     excludedMove = ss->excludedMove;
-    posKey = excludedMove == MOVE_NONE ? pos.key() : pos.key() ^ make_key(excludedMove);
+    posKey = pos.key();
     tte = TT.probe(posKey, ss->ttHit);
     ttValue = ss->ttHit ? value_from_tt(tte->value(), ss->ply, pos.rule50_count()) : VALUE_NONE;
     ttDepth = tte->depth();
@@ -528,8 +524,9 @@ namespace {
         // if the opponent had an alternative move earlier to this position.
         if (pos.has_game_cycle(ss->ply))
         {
-            tte->save(posKey, VALUE_DRAW, ss->ttPv, BOUND_EXACT,
-                      depth, MOVE_NONE, VALUE_NONE);
+            if (!excludedMove)
+                tte->save(posKey, VALUE_DRAW, ss->ttPv, BOUND_EXACT,
+                          depth, MOVE_NONE, VALUE_NONE);
 
             if (VALUE_DRAW >= beta)
                 return VALUE_DRAW;
@@ -579,6 +576,7 @@ namespace {
     // At non-PV nodes we check for an early TT cutoff
     if (  !PvNode
         && ss->ttHit
+        && !excludedMove
         && !gameCycle
         && (!ourMove || beta < VALUE_MATE_IN_MAX_PLY)
         && tte->depth() > depth - (tte->bound() == BOUND_EXACT)
@@ -612,7 +610,7 @@ namespace {
     }
 
     // Step 5. Tablebases probe
-    if (!rootNode && TB::Cardinality)
+    if (!rootNode && !excludedMove && TB::Cardinality)
     {
         int piecesCount = popcount(pos.pieces());
 
@@ -667,7 +665,13 @@ namespace {
     }
     else
     {
-    if (ss->ttHit)
+    if (excludedMove) {
+        // excludeMove implies that we had a ttHit on the containing non-excluded search with ss->staticEval filled from TT
+        // However static evals from the TT aren't good enough (-13 elo), presumably due to changing optimism context
+        // Recalculate value with current optimism (without updating thread avgComplexity)
+        ss->staticEval = eval = evaluate(pos, &complexity);
+    }
+    else if (ss->ttHit)
     {
         // Never assume anything about values stored in TT
         ss->staticEval = eval = tte->eval();
@@ -675,6 +679,7 @@ namespace {
             ss->staticEval = eval = evaluate(pos, &complexity);
         else // Fall back to (semi)classical complexity for TT hits, the NNUE complexity is lost
             complexity = abs(ss->staticEval - pos.psq_eg_stm());
+        thisThread->complexityAverage.update(complexity);
 
         // ttValue can be used as a better position evaluation (~7 Elo)
         if (    ttValue != VALUE_NONE
@@ -685,12 +690,11 @@ namespace {
     else
     {
         ss->staticEval = eval = evaluate(pos, &complexity);
+        thisThread->complexityAverage.update(complexity);
 
-        if (!excludedMove)
-            tte->save(posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, MOVE_NONE, eval);
+        // Save static evaluation into transposition table
+        tte->save(posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, MOVE_NONE, eval);
     }
-
-    thisThread->complexityAverage.update(complexity);
 
     // Use static evaluation difference to improve quiet move ordering (~4 Elo)
     if (is_ok((ss-1)->currentMove) && !(ss-1)->inCheck && !priorCapture)
@@ -829,8 +833,9 @@ namespace {
 
                    if (value >= probCutBeta)
                    {
-                       tte->save(posKey, value_to_tt(value, ss->ply), ss->ttPv,
-                                 BOUND_LOWER, depth - 3, move, ss->staticEval);
+                       if (!excludedMove)
+                           tte->save(posKey, value_to_tt(value, ss->ply), ss->ttPv,
+                                     BOUND_LOWER, depth - 3, move, ss->staticEval);
 
                        return value;
                    }
@@ -911,7 +916,7 @@ namespace {
                       &&  alpha > VALUE_MATED_IN_MAX_PLY + MAX_PLY
                       &&  ttValue > -VALUE_KNOWN_WIN / 2
                       &&  ttDepth >= depth - 3
-                      &&  depth >= 4 - (thisThread->previousDepth > 24) + 2 * (PvNode && tte->is_pv());
+                      &&  depth >= 4 - (thisThread->completedDepth > 22) + 2 * (PvNode && tte->is_pv());
 
     bool doLMP =    !PvNode
                  && (lmPrunable || ss->ply > 2)
@@ -1056,6 +1061,7 @@ namespace {
           Depth singularDepth = (depth - 1) / 2;
 
           ss->excludedMove = move;
+          // the search with excludedMove will update ss->staticEval
           value = search<NonPV>(pos, ss, singularBeta - 1, singularBeta, singularDepth, cutNode);
           ss->excludedMove = MOVE_NONE;
 
@@ -1127,7 +1133,8 @@ namespace {
                 + lmrAdjustment
                 - singularQuietLMR
                 - (depth > 9 && (mp.threatenedPieces & from_sq(move)))
-                - ss->statScore / (12800 + 4410 * (depth > 7 && depth < 19));
+                - ss->statScore / (12800 + 4410 * (depth > 7 && depth < 19))
+                - (move == ss->killers[0] && (*contHist[0])[movedPiece][to_sq(move)] >= 3600);
 
       // Step 17. Late moves reduction / extension (LMR, ~117 Elo)
       // We use various heuristics for the sons of a node after the first son has
@@ -1164,9 +1171,6 @@ namespace {
               int bonus = value > alpha ?  stat_bonus(newDepth)
                                         : -stat_bonus(newDepth);
 
-              if (capture)
-                  bonus /= 6;
-
               update_continuation_histories(ss, movedPiece, to_sq(move), bonus);
           }
       }
@@ -1192,8 +1196,7 @@ namespace {
           if (gameCycle && (ss-1)->moveCount < 2)
               newDepth += 2;
 
-          value = -search<PV>(pos, ss+1, -beta, -alpha,
-                              std::min(maxNextDepth, newDepth), false);
+          value = -search<PV>(pos, ss+1, -beta, -alpha, newDepth, false);
       }
 
       // Step 19. Undo move
@@ -1532,8 +1535,8 @@ namespace {
              }
          }
 
-         // Do not search moves with negative SEE values (~5 Elo)
-         if (!pos.see_ge(move))
+         // Do not search moves with bad enough SEE values (~5 Elo)
+         if (!pos.see_ge(move, Value(-108)))
              continue;
       }
 
