@@ -93,9 +93,9 @@ MovePicker::MovePicker(const Position& p, Move ttm, Value th, const CapturePiece
 {
   assert(!pos.checkers());
 
-  stage = PROBCUT_TT + !(ttm && pos.capture(ttm)
+  stage = PROBCUT_TT + !(ttm && pos.capture_stage(ttm)
                              && pos.pseudo_legal(ttm)
-                             && pos.see_ge(ttm, threshold));
+                             && pos.see_ge(ttm, occupied, threshold));
 }
 
 /// MovePicker::score() assigns a numerical value to each move in a list, used
@@ -141,7 +141,7 @@ void MovePicker::score() {
                    +     bool(pos.check_squares(type_of(pos.moved_piece(m))) & to_sq(m)) * 16384;
       else // Type == EVASIONS
       {
-          if (pos.capture(m))
+          if (pos.capture_stage(m))
               m.value =  PieceValue[MG][pos.piece_on(to_sq(m))]
                        - Value(type_of(pos.moved_piece(m)))
                        + (1 << 28);
@@ -199,7 +199,7 @@ top:
 
   case GOOD_CAPTURE:
       if (select<Next>([&](){
-                       return pos.see_ge(*cur, Value(-cur->value)) ?
+                       return pos.see_ge(*cur, occupied, Value(-cur->value)) ?
                               // Move losing capture to endBadCaptures to be tried later
                               true : (*endBadCaptures++ = *cur, false); }))
           return *(cur - 1);
@@ -218,7 +218,7 @@ top:
 
   case REFUTATION:
       if (select<Next>([&](){ return    *cur != MOVE_NONE
-                                    && !pos.capture(*cur)
+                                    && !pos.capture_stage(*cur)
                                     &&  pos.pseudo_legal(*cur); }))
           return *(cur - 1);
       ++stage;
@@ -266,7 +266,7 @@ top:
       return select<Best>([](){ return true; });
 
   case PROBCUT:
-      return select<Next>([&](){ return pos.see_ge(*cur, std::max(PawnValueMg, threshold)); });
+      return select<Next>([&](){ return pos.see_ge(*cur, occupied, std::max(PawnValueMg, threshold)); });
 
   case QCAPTURE:
       if (select<Next>([&](){ return   depth > DEPTH_QS_RECAPTURES

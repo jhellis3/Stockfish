@@ -68,7 +68,7 @@ struct StateInfo {
 /// start position to the position just before the search starts). Needed by
 /// 'draw by repetition' detection. Use a std::deque because pointers to
 /// elements are not invalidated upon list resizing.
-typedef std::unique_ptr<std::deque<StateInfo>> StateListPtr;
+using StateListPtr = std::unique_ptr<std::deque<StateInfo>>;
 
 
 /// Position class stores information regarding the board representation as
@@ -127,6 +127,7 @@ public:
   bool legal(Move m) const;
   bool pseudo_legal(const Move m) const;
   bool capture(Move m) const;
+  bool capture_stage(Move m) const;
   bool gives_check(Move m) const;
   Piece moved_piece(Move m) const;
   Piece captured_piece() const;
@@ -144,7 +145,7 @@ public:
   void undo_null_move();
 
   // Static Exchange Evaluation
-  bool see_ge(Move m, Value threshold = VALUE_ZERO) const;
+  bool see_ge(Move m, Bitboard& occupied, Value threshold = VALUE_ZERO) const;
 
   // Accessing hash keys
   Key key() const;
@@ -181,8 +182,8 @@ public:
 private:
   // Initialization helpers (used while setting up a position)
   void set_castling_right(Color c, Square rfrom);
-  void set_state(StateInfo* si) const;
-  void set_check_info(StateInfo* si) const;
+  void set_state() const;
+  void set_check_info() const;
 
   // Other helpers
   void move_piece(Square from, Square to);
@@ -383,8 +384,16 @@ inline bool Position::is_chess960() const {
 
 inline bool Position::capture(Move m) const {
   assert(is_ok(m));
-  // Castling is encoded as "king captures rook"
-  return (!empty(to_sq(m)) && type_of(m) != CASTLING) || type_of(m) == EN_PASSANT;
+  return     (!empty(to_sq(m)) && type_of(m) != CASTLING)
+          ||  type_of(m) == EN_PASSANT;
+}
+
+// returns true if a move is generated from the capture stage
+// having also queen promotions covered, i.e. consistency with the capture stage move generation
+// is needed to avoid the generation of duplicate moves.
+inline bool Position::capture_stage(Move m) const {
+  assert(is_ok(m));
+  return  capture(m) || promotion_type(m) == QUEEN;
 }
 
 inline Piece Position::captured_piece() const {

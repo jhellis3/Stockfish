@@ -136,6 +136,11 @@ namespace Stockfish::Eval::NNUE {
     return (bool)stream;
   }
 
+  void hint_common_parent_position(const Position& pos) {
+    if (Eval::useNNUE)
+        featureTransformer->hint_common_access(pos);
+  }
+
   // Evaluation function. Perform differential calculation.
   Value evaluate(const Position& pos, bool adjusted, int* complexity) {
 
@@ -143,7 +148,7 @@ namespace Stockfish::Eval::NNUE {
     // overaligning stack variables with alignas() doesn't work correctly.
 
     constexpr uint64_t alignment = CacheLineSize;
-    int delta = 24 - pos.non_pawn_material() / 9560;
+    constexpr int delta = 24;
 
 #if defined(ALIGNAS_ON_STACK_VARIABLES_BROKEN)
     TransformedFeatureType transformedFeaturesUnaligned[
