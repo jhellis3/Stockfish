@@ -225,7 +225,7 @@ namespace Stockfish::Eval::NNUE {
 
     buffer[0] = (v < 0 ? '-' : v > 0 ? '+' : ' ');
 
-    int cp = std::abs(100 * v / PawnValueEg);
+    int cp = std::abs(100 * v / TraditionalPawnValue);
     if (cp >= 10000)
     {
         buffer[1] = '0' + cp / 10000; cp %= 10000;
@@ -252,7 +252,7 @@ namespace Stockfish::Eval::NNUE {
 
   // format_cp_aligned_dot() converts a Value into (centi)pawns, always keeping two decimals.
   static void format_cp_aligned_dot(Value v, std::stringstream &stream) {
-    const double cp = 1.0 * std::abs(int(v)) / PawnValueEg;
+    const double cp = 1.0 * std::abs(int(v)) / TraditionalPawnValue;
 
     stream << (v < 0 ? '-' : v > 0 ? '+' : ' ')
            << std::setiosflags(std::ios::fixed)

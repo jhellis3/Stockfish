@@ -628,10 +628,10 @@ namespace {
 
                 int drawScore = TB::UseRule50 ? 1 : 0;
 
-                int centiPly = PawnValueEg * ss->ply / 100;
+                int centiPly = TraditionalPawnValue * ss->ply / 100;
 
-                Value tbValue =    v < -drawScore ? -VALUE_TB_WIN + (10 * PawnValueEg * (v == -1)) + centiPly + PawnValueEg * popcount(pos.pieces( pos.side_to_move()))
-                                 : v >  drawScore ?  VALUE_TB_WIN - (10 * PawnValueEg * (v ==  1)) - centiPly - PawnValueEg * popcount(pos.pieces(~pos.side_to_move()))
+                Value tbValue =    v < -drawScore ? -VALUE_TB_WIN + (10 * TraditionalPawnValue * (v == -1)) + centiPly + TraditionalPawnValue * popcount(pos.pieces( pos.side_to_move()))
+                                 : v >  drawScore ?  VALUE_TB_WIN - (10 * TraditionalPawnValue * (v ==  1)) - centiPly - TraditionalPawnValue * popcount(pos.pieces(~pos.side_to_move()))
                                  : v < 0 ? Value(-56) : VALUE_DRAW;
 
                 if (    abs(v) <= drawScore
@@ -1239,7 +1239,7 @@ namespace {
           RootMove& rm = *std::find(thisThread->rootMoves.begin(),
                                     thisThread->rootMoves.end(), move);
 
-          if (abs(value) < VALUE_TB_WIN - 6 * PawnValueEg)
+          if (abs(value) < VALUE_TB_WIN - 7 * TraditionalPawnValue)
               rm.averageScore = rm.averageScore != -VALUE_INFINITE ? (2 * value + rm.averageScore) / 3 : value;
           else
               rm.averageScore = value;
@@ -1853,7 +1853,7 @@ string UCI::pv(const Position& pos, Depth depth) {
       if (v == -VALUE_INFINITE)
           v = VALUE_ZERO;
 
-      bool tb = TB::RootInTB && abs(v) < VALUE_TB_WIN - 6 * PawnValueEg;
+      bool tb = TB::RootInTB && abs(v) < VALUE_TB_WIN - 6 * TraditionalPawnValue;
 
       v = tb ? rootMoves[i].tbScore : v;
 

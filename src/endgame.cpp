@@ -117,7 +117,7 @@ Value Endgame<KXK>::operator()(const Position& pos) const {
       || (   (pos.pieces(strongSide, BISHOP) & ~DarkSquares)
           && (pos.pieces(strongSide, BISHOP) &  DarkSquares)))
    {
-      result = std::min(result + pos.non_pawn_material(strongSide) + VALUE_KNOWN_WIN, VALUE_TB_WIN - 7 * PawnValueEg);
+      result = std::min(result + pos.non_pawn_material(strongSide) + VALUE_KNOWN_WIN, VALUE_TB_WIN - 7 * TraditionalPawnValue);
       return pos.side_to_move() == strongSide ? result : -result;
    }
 
@@ -131,7 +131,7 @@ Value Endgame<KXK>::operator()(const Position& pos) const {
   if ((Pawns & ~FileABB & ~FileHBB) || pos.count<KNIGHT>(strongSide))
   {
       result += pos.count<PAWN>(strongSide) * PawnValueEg + pos.non_pawn_material(strongSide);
-      result = std::min(result + VALUE_KNOWN_WIN, VALUE_TB_WIN - 7 * PawnValueEg);
+      result = std::min(result + VALUE_KNOWN_WIN, VALUE_TB_WIN - 7 * TraditionalPawnValue);
       return pos.side_to_move() == strongSide ? result : -result;
   }
 
@@ -146,7 +146,7 @@ Value Endgame<KXK>::operator()(const Position& pos) const {
 
     if (!opposite_colors(queeningSq, bishopSq))
     {
-      result = std::min(result + PawnValueEg + pos.non_pawn_material(strongSide) + VALUE_KNOWN_WIN, VALUE_TB_WIN - 7 * PawnValueEg);
+      result = std::min(result + PawnValueEg + pos.non_pawn_material(strongSide) + VALUE_KNOWN_WIN, VALUE_TB_WIN - 7 * TraditionalPawnValue);
       return pos.side_to_move() == strongSide ? result : -result;
     }
     // Wrong colored bishop(s)
@@ -155,7 +155,7 @@ Value Endgame<KXK>::operator()(const Position& pos) const {
   }
   else
   {
-      result = std::min(result + PawnValueEg + pos.non_pawn_material(strongSide) + VALUE_KNOWN_WIN, VALUE_TB_WIN - 7 * PawnValueEg);
+      result = std::min(result + PawnValueEg + pos.non_pawn_material(strongSide) + VALUE_KNOWN_WIN, VALUE_TB_WIN - 7 * TraditionalPawnValue);
       return pos.side_to_move() == strongSide ? result : -result;
   }
 

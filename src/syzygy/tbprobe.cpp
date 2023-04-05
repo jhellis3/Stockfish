@@ -87,11 +87,11 @@ bool pawns_comp(Square i, Square j) { return MapPawns[i] < MapPawns[j]; }
 int off_A1H8(Square sq) { return int(rank_of(sq)) - file_of(sq); }
 
 constexpr Value WDL_to_value[] = {
-   -VALUE_TB_WIN + 6 * PawnValueEg,
+   -VALUE_TB_WIN + 7 * TraditionalPawnValue,
     VALUE_DRAW - 2,
     VALUE_DRAW,
     VALUE_DRAW + 2,
-    VALUE_TB_WIN - 6 * PawnValueEg
+    VALUE_TB_WIN - 7 * TraditionalPawnValue
 };
 
 template<typename T, int Half = sizeof(T) / 2, int End = sizeof(T) - 1>
@@ -1572,11 +1572,11 @@ bool Tablebases::root_probe(Position& pos, Search::RootMoves& rootMoves) {
         // Determine the score to be displayed for this move. Assign at least
         // 1 cp to cursed wins and let it grow to 49 cp as the positions gets
         // closer to a real win.
-        m.tbScore =  r >= bound ? VALUE_TB_WIN - (10 * PawnValueEg * (dtz >=  101)) - PawnValueEg * (1 + popcount(pos.pieces(~pos.side_to_move())))
-                   : r >  0     ? Value((std::max( 3, r - (MAX_DTZ - 200)) * int(PawnValueEg)) / 200)
+        m.tbScore =  r >= bound ? VALUE_TB_WIN - (10 * TraditionalPawnValue * (dtz >=  101)) - TraditionalPawnValue * (1 + popcount(pos.pieces(~pos.side_to_move())))
+                   : r >  0     ? Value((std::max( 3, r - (MAX_DTZ - 200)) * int(TraditionalPawnValue)) / 200)
                    : r == 0     ? VALUE_DRAW
-                   : r > -bound ? Value((std::min(-3, r + (MAX_DTZ - 200)) * int(PawnValueEg)) / 200)
-                   :             -VALUE_TB_WIN + (10 * PawnValueEg * (dtz <= -101)) + PawnValueEg * (1 + popcount(pos.pieces( pos.side_to_move())));
+                   : r > -bound ? Value((std::min(-3, r + (MAX_DTZ - 200)) * int(TraditionalPawnValue)) / 200)
+                   :             -VALUE_TB_WIN + (10 * TraditionalPawnValue * (dtz <= -101)) + TraditionalPawnValue * (1 + popcount(pos.pieces( pos.side_to_move())));
     }
 
     return true;

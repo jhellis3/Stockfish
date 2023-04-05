@@ -195,7 +195,9 @@ enum Value : int {
 
   MidgameLimit  = 15258, EndgameLimit  = 3915,
 
-  VALUE_TB_WIN    = 101 * PawnValueEg
+  TraditionalPawnValue = (QueenValueEg / 9 + RookValueEg / 5 + BishopValueEg / 3 + KnightValueEg / 3) / 4,
+
+  VALUE_TB_WIN    = 101 * TraditionalPawnValue
 };
 
 enum PieceType {

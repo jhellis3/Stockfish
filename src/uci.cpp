@@ -320,11 +320,11 @@ string UCI::value(Value v, Value v2) {
 
   if (abs(v) < VALUE_MATE_IN_MAX_PLY)
   {
-      if (   abs(v) < 80 * PawnValueEg
-          && abs(v - v2) < PawnValueEg)
+      if (   abs(v) < 80 * TraditionalPawnValue
+          && abs(v - v2) < TraditionalPawnValue)
           v = (v + v2) / 2;
 
-      ss << "cp " << v * 100 / PawnValueEg;
+      ss << "cp " << v * 100 / TraditionalPawnValue;
   }
   else
       ss << "mate " << (v > 0 ? VALUE_MATE - v + 1 : -VALUE_MATE - v) / 2;

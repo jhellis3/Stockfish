@@ -160,7 +160,7 @@ namespace Trace {
 
   Score scores[TERM_NB][COLOR_NB];
 
-  static double to_cp(Value v) { return double(v) / PawnValueEg; }
+  static double to_cp(Value v) { return double(v) / TraditionalPawnValue; }
 
   static void add(int idx, Color c, Score s) {
     scores[idx][c] = s;
@@ -1068,7 +1068,7 @@ Value Eval::evaluate(const Position& pos, int* complexity) {
   v = v * std::max(1, (101 - pos.rule50_count())) / 101;
 
   // Do not return evals greater than a TB result
-  v = std::clamp(v, -VALUE_TB_WIN + 8 * PawnValueEg, VALUE_TB_WIN - 8 * PawnValueEg);
+  v = std::clamp(v, -VALUE_TB_WIN + 8 * TraditionalPawnValue, VALUE_TB_WIN - 8 * TraditionalPawnValue);
 
   return v;
 }
