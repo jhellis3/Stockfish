@@ -131,8 +131,6 @@ public:
   MovePicker(const Position&, Move, Value, const CapturePieceToHistory*);
   Move next_move(bool skipQuiets = false);
 
-  Bitboard threatenedPieces;
-
 private:
   template<PickType T, typename Pred> Move select(Pred);
   template<GenType> void score();
@@ -150,7 +148,6 @@ private:
   Value threshold;
   Depth depth;
   ExtMove moves[MAX_MOVES];
-  Bitboard occupied;
 };
 
 } // namespace Stockfish

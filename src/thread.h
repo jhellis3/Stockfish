@@ -60,7 +60,6 @@ public:
   Pawns::Table pawnsTable;
   Material::Table materialTable;
   size_t pvIdx, pvLast;
-  RunningAverage complexityAverage;
   std::atomic<uint64_t> nodes, tbHits, bestMoveChanges;
   Value bestValue;
   int selDepth;
@@ -87,6 +86,7 @@ struct MainThread : public Thread {
   void search() override;
   void check_time();
 
+  double complexity;
   double previousTimeReduction;
   Value bestPreviousScore;
   Value bestPreviousAverageScore;

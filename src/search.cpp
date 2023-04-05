@@ -71,7 +71,7 @@ namespace {
 
   Depth reduction(bool i, Depth d, int mn, Value delta, Value rootDelta) {
     int r = Reductions[d] * Reductions[mn];
-    return (r + 1449 - int(delta) * 1032 / int(rootDelta)) / 1024 + (!i && r > 941);
+    return (r + 1449 - int(delta) * 1001 / int(rootDelta)) / 1024 + (!i && r > 941);
   }
 
   constexpr int futility_move_count(bool improving, Depth depth) {
@@ -81,7 +81,7 @@ namespace {
 
   // History and stats update bonus, based on depth
   int stat_bonus(Depth d) {
-    return std::min(340 * d - 470, 1855);
+    return std::min(341 * d - 470, 1855);
   }
 
   template <NodeType nodeType>
@@ -262,6 +262,12 @@ void Thread::search() {
 
   if (mainThread)
   {
+
+      int rootComplexity;
+      Eval::evaluate(rootPos, &rootComplexity);
+
+      mainThread->complexity = std::min(1.03 + (rootComplexity - 241) / 1552.0, 1.45);
+
       if (mainThread->bestPreviousScore == VALUE_INFINITE)
           for (int i = 0; i < 4; ++i)
               mainThread->iterValue[i] = VALUE_ZERO;
@@ -273,8 +279,6 @@ void Thread::search() {
   size_t multiPV = size_t(Options["MultiPV"]);
 
   multiPV = std::min(multiPV, rootMoves.size());
-
-  complexityAverage.set(153, 1);
 
   // Iterative deepening loop until requested to stop or the target depth is reached
   while (   ++rootDepth < MAX_PLY
@@ -418,15 +422,13 @@ void Thread::search() {
           timeReduction = lastBestMoveDepth + 8 < completedDepth ? 1.57 : 0.65;
           double reduction = (1.4 + mainThread->previousTimeReduction) / (2.08 * timeReduction);
           double bestMoveInstability = 1 + 1.8 * totBestMoveChanges / Threads.size();
-          int complexity = mainThread->complexityAverage.value();
-          double complexPosition = std::min(1.03 + (complexity - 241) / 1552.0, 1.45);
 
           TimePoint elapsedT = Time.elapsed();
           TimePoint optimumT = Time.optimum();
 
           // Stop the search if we have only one legal move, or if available time elapsed
           if (   (rootMoves.size() == 1 && (elapsedT > optimumT / 16))
-              || elapsedT > optimumT * fallingEval * reduction * bestMoveInstability * complexPosition)
+              || elapsedT > optimumT * fallingEval * reduction * bestMoveInstability * mainThread->complexity)
           {
               // If we are allowed to ponder do not stop the search now but
               // keep pondering until the GUI sends "ponderhit" or "stop".
@@ -694,8 +696,6 @@ namespace {
         // Save static evaluation into transposition table
         tte->save(posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, MOVE_NONE, eval);
     }
-
-    thisThread->complexityAverage.update(complexity);
 
     // Use static evaluation difference to improve quiet move ordering (~4 Elo)
     if (is_ok((ss-1)->currentMove) && !(ss-1)->inCheck && !priorCapture)
@@ -1063,9 +1063,8 @@ namespace {
 
               lmrDepth = std::max(lmrDepth, 0);
 
-              Bitboard occupied;
               // Prune moves with negative SEE (~4 Elo)
-              if (!pos.see_ge(move, occupied, Value(-24 * lmrDepth * lmrDepth - 15 * lmrDepth)))
+              if (!pos.see_ge(move, Value(-24 * lmrDepth * lmrDepth - 16 * lmrDepth)))
                   continue;
           }
           }
@@ -1149,14 +1148,13 @@ namespace {
                          + (*contHist[0])[movedPiece][to_sq(move)]
                          + (*contHist[1])[movedPiece][to_sq(move)]
                          + (*contHist[3])[movedPiece][to_sq(move)]
-                         - 4467;
+                         - 4082;
 
       r =         r
                 + lmrAdjustment
                 - singularQuietLMR
-                - (depth > 9 && (mp.threatenedPieces & from_sq(move)))
-                - ss->statScore / (12800 + 4410 * (depth > 7 && depth < 19))
-                - (move == ss->killers[0] && (*contHist[0])[movedPiece][to_sq(move)] >= 3600);
+                - ss->statScore / (11079 + 4626 * (depth > 6 && depth < 19))
+                - (move == ss->killers[0] && (*contHist[0])[movedPiece][to_sq(move)] >= 3722);
 
       // Step 17. Late moves reduction / extension (LMR, ~117 Elo)
       // We use various heuristics for the sons of a node after the first son has
@@ -1219,6 +1217,9 @@ namespace {
               newDepth += 2;
 
           value = -search<PV>(pos, ss+1, -beta, -alpha, newDepth, false);
+
+          if (moveCount > 1 && newDepth >= depth && !capture)
+              update_continuation_histories(ss, movedPiece, to_sq(move), -stat_bonus(newDepth));
       }
 
       // Step 19. Undo move
@@ -1524,7 +1525,6 @@ namespace {
                                       prevSq);
 
     int quietCheckEvasions = 0;
-    Bitboard occupied;
 
     // Step 5. Loop through all pseudo-legal moves until no moves remain
     // or a beta cutoff occurs.
@@ -1556,7 +1556,7 @@ namespace {
                  continue;
              }
 
-             if (futilityBase <= alpha && !pos.see_ge(move, occupied, VALUE_ZERO + 1))
+             if (futilityBase <= alpha && !pos.see_ge(move, VALUE_ZERO + 1))
              {
                  bestValue = std::max(bestValue, futilityBase);
                  continue;
@@ -1576,7 +1576,7 @@ namespace {
             continue;
 
          // Do not search moves with bad enough SEE values (~5 Elo)
-         if (!pos.see_ge(move, occupied, Value(-110)))
+         if (!pos.see_ge(move, Value(-110)))
              continue;
       }
 
