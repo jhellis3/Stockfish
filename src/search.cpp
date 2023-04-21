@@ -903,7 +903,7 @@ namespace {
 
     int lmrAdjustment =   ttCapture
                         + 2 * cutNode
-                        + (ss+1)->cutoffCnt > 3
+                        + ((ss+1)->cutoffCnt > 3)
                         - 2 * (ss->ttPv && !likelyFailLow)
                         - ((ss-1)->moveCount > 7)
                         - 2 * PvNode;
