@@ -1042,28 +1042,12 @@ make_v:
 /// evaluate() is the evaluator for the outer world. It returns a static
 /// evaluation of the position from the point of view of the side to move.
 
-Value Eval::evaluate(const Position& pos, int* complexity) {
+Value Eval::evaluate(const Position& pos) {
 
   assert(!pos.checkers());
 
-  int nnueComplexity = 0;
-
-  Value v = useNNUE ? NNUE::evaluate(pos, true, &nnueComplexity)
+  Value v = useNNUE ? NNUE::evaluate(pos, true)
                     : Evaluation<NO_TRACE>(pos).value();
-
-  Value psq = pos.psq_eg_stm();
-
-  if (useNNUE)
-  {
-       // Blend nnue complexity with (semi)classical complexity
-       nnueComplexity = (406 * nnueComplexity + 424 * abs(v - psq)) / 1024;
-
-       if (complexity) // Return hybrid NNUE complexity to caller
-           *complexity = nnueComplexity;
-  }
-  // When not using NNUE, return classical complexity to caller
-  else if (complexity)
-        *complexity = abs(v - psq);
 
   v = v * std::max(1, (101 - pos.rule50_count())) / 101;
 
