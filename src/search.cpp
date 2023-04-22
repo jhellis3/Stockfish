@@ -71,7 +71,7 @@ namespace {
 
   Depth reduction(bool i, Depth d, int mn, Value delta, Value rootDelta) {
     int r = Reductions[d] * Reductions[mn];
-    return (r + 1449 - int(delta) * 1001 / int(rootDelta)) / 1024 + (!i && r > 941);
+    return (r + 1449 - int(delta) * 937 / int(rootDelta)) / 1024 + (!i && r > 941);
   }
 
   constexpr int futility_move_count(bool improving, Depth depth) {
@@ -81,7 +81,7 @@ namespace {
 
   // History and stats update bonus, based on depth
   int stat_bonus(Depth d) {
-    return std::min(341 * d - 470, 1855);
+    return std::min(341 * d - 470, 1710);
   }
 
   template <NodeType nodeType>
@@ -263,10 +263,12 @@ void Thread::search() {
   if (mainThread)
   {
 
-      int rootComplexity;
-      Eval::evaluate(rootPos, &rootComplexity);
-
-      mainThread->complexity = std::min(1.03 + (rootComplexity - 241) / 1552.0, 1.45);
+      if (!rootPos.checkers())
+      {
+          int rootComplexity;
+          Eval::evaluate(rootPos, &rootComplexity);
+          mainThread->complexity = std::min(1.03 + (rootComplexity - 241) / 1552.0, 1.45);
+      }
 
       if (mainThread->bestPreviousScore == VALUE_INFINITE)
           for (int i = 0; i < 4; ++i)
@@ -723,7 +725,7 @@ namespace {
        // If eval is really low check with qsearch if it can exceed alpha, if it can't,
        // return a fail low.
        if (  !ourMove
-           && eval < alpha - 426 - 252 * depth * depth)
+           && eval < alpha - 426 - 256 * depth * depth)
        {
         value = qsearch<NonPV>(pos, ss, alpha - 1, alpha);
         if (value < alpha)
@@ -748,7 +750,7 @@ namespace {
            &&  beta < VALUE_MATE_IN_MAX_PLY
            &&  eval >= beta
            &&  eval >= ss->staticEval
-           &&  ss->staticEval >= beta - 19 * depth - improvement / 13 + 253 + complexity / 25
+           &&  ss->staticEval >= beta - 20 * depth - improvement / 13 + 253 + complexity / 25
            &&  pos.non_pawn_material(us)
            && !kingDanger
            && (rootDepth < 11 || ourMove || MoveList<LEGAL>(pos).size() > 5))
@@ -758,7 +760,7 @@ namespace {
            thisThread->nmpSide = ourMove;
 
            // Null move dynamic reduction based on depth and value
-           Depth R = std::min(int(eval - beta) / 168, 6) + depth / 3 + 4 - (complexity > 825);
+           Depth R = std::min(int(eval - beta) / 172, 6) + depth / 3 + 4 - (complexity > 825);
 
            if (   depth < 11
                || ttValue >= beta
@@ -1022,16 +1024,18 @@ namespace {
               {
                   if (depth < 2 - capture)
                       continue;
-                  // don't prune move if a heavy enemy piece (KQR) is under attack after the exchanges
-                  Bitboard leftEnemies = (pos.pieces(~us, QUEEN, ROOK) | pos.pieces(~us, KING)) & occupied;
+                  // Don't prune the move if opp. King/Queen/Rook is attacked by a slider after the exchanges.
+                  // Since in see_ge we don't update occupied when the king recaptures, we also don't prune the
+                  // move when the opp. King gets a discovered slider attack DURING the exchanges.
+                  Bitboard leftEnemies = pos.pieces(~us, ROOK, QUEEN, KING) & occupied;
                   Bitboard attacks = 0;
                   occupied |= to_sq(move);
                   while (leftEnemies && !attacks)
                   {
                       Square sq = pop_lsb(leftEnemies);
-                      attacks |= pos.attackers_to(sq, occupied) & pos.pieces(us) & occupied;
-                      // exclude Queen/Rook(s) which were already threatened before SEE
-                      if (attacks && (sq != pos.square<KING>(~us) && (pos.attackers_to(sq, pos.pieces()) & pos.pieces(us))))
+                      attacks = pos.attackers_to(sq, occupied) & pos.pieces(us) & occupied;
+                      // Exclude Queen/Rook(s) which were already threatened before SEE
+                      if (attacks && sq != pos.square<KING>(~us) && (pos.attackers_to(sq, pos.pieces()) & pos.pieces(us)))
                           attacks = 0;
                   }
                   if (!attacks)
@@ -1153,8 +1157,7 @@ namespace {
       r =         r
                 + lmrAdjustment
                 - singularQuietLMR
-                - ss->statScore / (11079 + 4626 * (depth > 6 && depth < 19))
-                - (move == ss->killers[0] && (*contHist[0])[movedPiece][to_sq(move)] >= 3722);
+                - ss->statScore / (11079 + 4626 * (depth > 6 && depth < 19));
 
       // Step 17. Late moves reduction / extension (LMR, ~117 Elo)
       // We use various heuristics for the sons of a node after the first son has
@@ -1188,8 +1191,9 @@ namespace {
               if (newDepth > d)
                   value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, newDepth, !cutNode);
 
-              int bonus = value > alpha ?  stat_bonus(newDepth)
-                                        : -stat_bonus(newDepth);
+              int bonus = value <= alpha ? -stat_bonus(newDepth)
+                        : value >= beta  ?  stat_bonus(newDepth)
+                                         :  0;
 
               update_continuation_histories(ss, movedPiece, to_sq(move), bonus);
           }
@@ -1217,9 +1221,6 @@ namespace {
               newDepth += 2;
 
           value = -search<PV>(pos, ss+1, -beta, -alpha, newDepth, false);
-
-          if (moveCount > 1 && newDepth >= depth && !capture)
-              update_continuation_histories(ss, movedPiece, to_sq(move), -stat_bonus(newDepth));
       }
 
       // Step 19. Undo move
@@ -1297,17 +1298,18 @@ namespace {
 
               if (PvNode && value < beta) // Update alpha! Always alpha < beta
               {
-                  alpha = value;
-
                   // Reduce other moves if we have found at least one score improvement (~1 Elo)
                   if (   depth > 1
-                      && depth < 6
+                      && (   (improving && complexity > 971)
+                          || value < (5 * alpha + 75 * beta) / 87
+                          || depth < 6)
                       && !gameCycle
                       && beta  <  VALUE_KNOWN_WIN
                       && alpha > -VALUE_KNOWN_WIN)
                       depth -= 1;
 
                   assert(depth > 0);
+                  alpha = value;
               }
               else
               {

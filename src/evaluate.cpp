@@ -1044,6 +1044,8 @@ make_v:
 
 Value Eval::evaluate(const Position& pos, int* complexity) {
 
+  assert(!pos.checkers());
+
   int nnueComplexity = 0;
 
   Value v = useNNUE ? NNUE::evaluate(pos, true, &nnueComplexity)
