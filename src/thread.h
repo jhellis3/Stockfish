@@ -62,6 +62,7 @@ public:
   size_t pvIdx, pvLast;
   std::atomic<uint64_t> nodes, tbHits, bestMoveChanges;
   Value bestValue;
+  Value pvValue;
   int selDepth;
   bool nmpGuard, nmpGuardV, nmpSide;
 

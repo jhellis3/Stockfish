@@ -486,6 +486,7 @@ namespace {
     rootDepth           = thisThread->rootDepth;
     ourMove             = !(ss->ply & 1);
     nullParity          = (ourMove == thisThread->nmpSide);
+    ss->secondaryLine   = false;
 
     // Check for the available remaining time
     if (thisThread == Threads.main())
@@ -943,6 +944,15 @@ namespace {
       givesCheck = pos.gives_check(move);
       isMate = false;
 
+
+      // This tracks all of our possible responses to our opponent's best moves outside of the PV.
+      // The reasoning here is that while we look for flaws in the PV, we must otherwise find an improvement
+      // in a secondary root move in order to change the PV. Such an improvement must occur on the path of
+      // our opponent's best moves or else it is meaningless.
+      ss->secondaryLine = (   (rootNode && moveCount > 1)
+                           || (!ourMove && (ss-1)->secondaryLine && !excludedMove && moveCount == 1)
+                           || ( ourMove && (ss-1)->secondaryLine));
+
       if (givesCheck)
       {
           pos.do_move(move, st, givesCheck);
@@ -1235,6 +1245,8 @@ namespace {
               rm.score =  rm.uciScore = value;
               rm.selDepth = thisThread->selDepth;
               rm.scoreLowerbound = rm.scoreUpperbound = false;
+
+              thisThread->pvValue = value;
 
               if (value >= beta)
               {

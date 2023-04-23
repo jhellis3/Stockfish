@@ -199,6 +199,7 @@ void ThreadPool::start_thinking(Position& pos, StateListPtr& states,
   for (Thread* th : threads)
   {
       th->nodes = th->tbHits = th->nmpGuardV = th->nmpGuard = th->bestMoveChanges = 0;
+      th->pvValue = VALUE_NONE;
       th->rootDepth = th->completedDepth = 0;
       th->nmpSide = 0;
       th->rootMoves = rootMoves;
