@@ -789,12 +789,13 @@ namespace {
        // much above beta, we can (almost) safely prune the previous move.
        if (    depth > 4
            &&  abs(beta) < VALUE_MATE_IN_MAX_PLY
+           && (ttCapture || !ttMove)
            // If we don't have a ttHit or our ttDepth is not greater our
            // reduced depth search, continue with the probcut.
            && (!ss->ttHit || ttDepth < depth - 3))
        {
            assert(probCutBeta < VALUE_INFINITE);
-           MovePicker mp(pos, ttMove, probCutBeta - ss->staticEval, &captureHistory);
+           MovePicker mp(pos, ttMove, KnightValueMg - BishopValueMg + PieceValue[MG][type_of(pos.captured_piece())], &captureHistory);
 
            while ((move = mp.next_move()) != MOVE_NONE)
                if (move != excludedMove)
@@ -851,6 +852,7 @@ namespace {
         && ttCapture
         && !gameCycle
         && !kingDanger
+        && !(ss-1)->secondaryLine
         && !(thisThread->nmpGuard && nullParity)
         && !(thisThread->nmpGuardV && nullParity)
         && (ttBound & BOUND_LOWER)
