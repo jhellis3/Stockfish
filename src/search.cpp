@@ -842,6 +842,12 @@ namespace {
         && (ss-1)->moveCount > 1)
         depth -= 2;
 
+    if (    cutNode
+        && !(ss-1)->secondaryLine
+        &&  depth >= 7
+        && !ttMove)
+        depth -= 2;
+
     } // In check search starts here
 
    // Step 12. A small Probcut idea, when we are in check (~4 Elo)
@@ -1016,7 +1022,7 @@ namespace {
 
               Bitboard occupied;
               // SEE based pruning (~11 Elo)
-              if (!pos.see_ge(move, occupied, Value(-206) * depth))
+              if (/*(!ourMove || !(ss-1)->secondaryLine) &&*/ !pos.see_ge(move, occupied, Value(-206) * depth))
               {
                   if (depth < 2 - capture)
                       continue;
@@ -1056,6 +1062,7 @@ namespace {
               if (   !ss->inCheck
                   && lmrDepth < 13 // was 8
                   && history < 20500 - 3875 * (depth - 1)
+                  //&& (!ourMove || !(ss-1)->secondaryLine)
                   && ss->staticEval + 103 + 138 * lmrDepth <= alpha)
                   continue;
 
