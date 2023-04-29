@@ -747,6 +747,9 @@ namespace {
            // Null move dynamic reduction based on depth and value
            Depth R = std::min(int(eval - beta) / 172, 6) + depth / 3 + 4;
 
+           if (!ourMove && (ss-1)->secondaryLine)
+               R = std::min(R, 8);
+
            if (   depth < 11
                || ttValue >= beta
                || ttDepth < depth-R
