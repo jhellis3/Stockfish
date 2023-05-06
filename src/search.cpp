@@ -1133,6 +1133,14 @@ namespace {
           && abs(ss->staticEval) > 78)
           extension = 1;
 
+      // Quiet ttMove extensions (~1 Elo)
+      else if (   extension < 1
+               && PvNode
+               && move == ttMove
+               && move == ss->killers[0]
+               && (*contHist[0])[movedPiece][to_sq(move)] >= 5705)
+          extension = 1;
+
       // Add extension to new depth
       newDepth += extension;
       ss->doubleExtensions = (ss-1)->doubleExtensions + (extension == 2);
