@@ -732,7 +732,7 @@ namespace {
        if (   !thisThread->nmpGuard
            &&  (ss-1)->statScore < 17329
            && !gameCycle
-           &&  beta < VALUE_MATE_IN_MAX_PLY
+           //&&  beta < VALUE_MATE_IN_MAX_PLY Implied by eval >= beta & abs(eval) < 2 * VALUE_KNOWN_WIN
            &&  eval >= beta
            &&  eval >= ss->staticEval
            &&  ss->staticEval >= beta - 21 * depth - improvement / 13 + 258
@@ -769,8 +769,7 @@ namespace {
                // Do not return unproven mate or TB scores
                nullValue = std::min(nullValue, VALUE_MATE_IN_MAX_PLY);
 
-               if (   abs(beta) < VALUE_KNOWN_WIN
-                   && depth < 11
+               if (   depth < 11
                    && beta <= qsearch<NonPV>(pos, ss, beta-1, beta))
                    return nullValue;
 
@@ -779,8 +778,10 @@ namespace {
                Value v = search<NonPV>(pos, ss, beta-1, beta, depth-R, false);
                thisThread->nmpGuardV = false;
 
+               // While it is unsafe to return mate scores from null search, mate scores
+               // from verification search are fine.
                if (v >= beta)
-                   return nullValue;
+                   return v > VALUE_MATE_IN_MAX_PLY ? v : nullValue;
            }
            }
        }
@@ -1483,9 +1484,7 @@ namespace {
 
     // Step 4. Static evaluation of the position
     if (ss->inCheck)
-    {
         bestValue = futilityBase = -VALUE_INFINITE;
-    }
     else
     {
         if (ss->ttHit)
@@ -1501,11 +1500,9 @@ namespace {
                 bestValue = ttValue;
         }
         else
-        {
             // In case of null move search use previous static eval with a different sign
             ss->staticEval = bestValue = (ss-1)->currentMove != MOVE_NULL ? evaluate(pos)
                                                                           : -(ss-1)->staticEval;
-        }
 
         // Stand pat. Return immediately if static value is at least beta
         if (bestValue >= beta)
