@@ -66,7 +66,7 @@ namespace {
     return Value(140 * (d - improving));
   }
 
-  // Reductions lookup table, initialized at startup
+  // Reductions lookup table initialized at startup
   int Reductions[MAX_MOVES]; // [depth or moveNumber]
 
   Depth reduction(bool i, Depth d, int mn, Value delta, Value rootDelta) {
@@ -282,7 +282,7 @@ void Thread::search() {
       if (mainThread)
           totBestMoveChanges /= 2;
 
-      // Save the last iteration's scores before first PV line is searched and
+      // Save the last iteration's scores before the first PV line is searched and
       // all the move scores except the (new) PV are set to -VALUE_INFINITE.
       for (RootMove& rm : rootMoves)
           rm.previousScore = rm.score;
@@ -325,9 +325,9 @@ void Thread::search() {
 
               // Bring the best move to the front. It is critical that sorting
               // is done with a stable algorithm because all the values but the
-              // first and eventually the new best one are set to -VALUE_INFINITE
+              // first and eventually the new best one is set to -VALUE_INFINITE
               // and we want to keep the same order for all the moves except the
-              // new PV that goes to the front. Note that in case of MultiPV
+              // new PV that goes to the front. Note that in the case of MultiPV
               // search the already searched PV lines are preserved.
               std::stable_sort(rootMoves.begin() + pvIdx, rootMoves.begin() + pvLast);
 
@@ -553,7 +553,6 @@ namespace {
         // mate. In this case return a fail-high score.
         if (alpha >= mate_in(ss->ply+1))
             return mate_in(ss->ply+1);
-
     }
     else
         thisThread->rootDelta = beta - alpha;
@@ -681,7 +680,7 @@ namespace {
     else
     {
         ss->staticEval = eval = evaluate(pos);
-        // Save static evaluation into transposition table
+        // Save static evaluation into the transposition table
         tte->save(posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_NONE, MOVE_NONE, eval);
     }
 
@@ -735,7 +734,7 @@ namespace {
            //&&  beta < VALUE_MATE_IN_MAX_PLY Implied by eval >= beta & abs(eval) < 2 * VALUE_KNOWN_WIN
            &&  eval >= beta
            &&  eval >= ss->staticEval
-           &&  ss->staticEval >= beta - 21 * depth - improvement / 13 + 258
+           &&  ss->staticEval >= beta - 21 * depth + 258
            &&  pos.non_pawn_material(us)
            && !kingDanger
            && (rootDepth < 11 || ourMove || MoveList<LEGAL>(pos).size() > 5))
@@ -887,7 +886,7 @@ namespace {
     moveCountPruning = singularQuietLMR = false;
 
     // Indicate PvNodes that will probably fail low if the node was searched
-    // at a depth equal or greater than the current depth, and the result of this search was a fail low.
+    // at a depth equal to or greater than the current depth, and the result of this search was a fail low.
     bool likelyFailLow =    PvNode
                          && ttMove
                          && (ttBound & BOUND_UPPER)
@@ -933,8 +932,8 @@ namespace {
           continue;
 
       // At root obey the "searchmoves" option and skip moves not listed in Root
-      // Move List. As a consequence any illegal move is also skipped. In MultiPV
-      // mode we also skip PV moves which have been already searched and those
+      // Move List. As a consequence, any illegal move is also skipped. In MultiPV
+      // mode we also skip PV moves that have been already searched and those
       // of lower "TB rank" if we are in a TB root position.
       if (rootNode && !std::count(thisThread->rootMoves.begin() + thisThread->pvIdx,
                                   thisThread->rootMoves.begin() + thisThread->pvLast, move))
@@ -1038,7 +1037,7 @@ namespace {
                  {
                       Square sq = pop_lsb(leftEnemies);
                       attacks |= pos.attackers_to(sq, occupied) & pos.pieces(us) & occupied;
-                      // don't consider pieces which were already threatened/hanging before SEE exchanges
+                      // Don't consider pieces that were already threatened/hanging before SEE exchanges
                       if (attacks && (sq != pos.square<KING>(~us) && (pos.attackers_to(sq, pos.pieces()) & pos.pieces(us))))
                          attacks = 0;
                  }
@@ -1121,9 +1120,13 @@ namespace {
             if (ttValue >= beta)
                 return ttValue; // beta safer?
 
+            // If we are on a cutNode, reduce it based on depth (negative extension) (~1 Elo)
+            else if (cutNode)
+                extension = depth > 8 && depth < 17 ? -3 : -1;
+
             // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
             else if (!gameCycle && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
-                     extension = -1;
+                extension = -1;
           }
       }
 
@@ -1174,7 +1177,7 @@ namespace {
 
       // Step 17. Late moves reduction / extension (LMR, ~117 Elo)
       // We use various heuristics for the sons of a node after the first son has
-      // been searched. In general we would like to reduce them, but there are many
+      // been searched. In general, we would like to reduce them, but there are many
       // cases where we extend a son if it has good chances to be "interesting".
       if (    allowLMR
           && !lateKingDanger
@@ -1188,10 +1191,10 @@ namespace {
 
           value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, d, true);
 
-          // Do full depth search when reduced LMR search fails high
+          // Do a full-depth search when reduced LMR search fails high
           if (value > alpha && d < newDepth)
           {
-              // Adjust full depth search based on LMR results - if result
+              // Adjust full-depth search based on LMR results - if the result
               // was good enough search deeper, if it was bad enough search shallower
               const bool doDeeperSearch = value > (bestValue + 64 + 11 * (newDepth - d));
               const bool doEvenDeeperSearch = value > alpha + 711 && ss->doubleExtensions <= 6;
@@ -1212,7 +1215,7 @@ namespace {
           }
       }
 
-      // Step 18. Full depth search when LMR is skipped. If expected reduction is high, reduce its depth by 1.
+      // Step 18. Full-depth search when LMR is skipped. If expected reduction is high, reduce its depth by 1.
       else if (!PvNode || moveCount > 1)
       {
           // Increase reduction for cut nodes and not ttMove (~1 Elo)
@@ -1294,7 +1297,7 @@ namespace {
                   ++thisThread->bestMoveChanges;
           }
           else
-              // All other moves but the PV are set to the lowest value: this
+              // All other moves but the PV, are set to the lowest value: this
               // is not a problem when sorting because the sort is stable and the
               // move position in the list is preserved - just the PV is pushed up.
               rm.score = -VALUE_INFINITE;
@@ -1319,9 +1322,9 @@ namespace {
               }
               else
               {
-                  // Reduce other moves if we have found at least one score improvement (~1 Elo)
-                  // Reduce more for depth > 3 and depth < 12 (~1 Elo)
-                  if (   depth > 1
+                  // Reduce other moves if we have found at least one score improvement (~2 Elo)
+                  if (   depth > 2
+                      && depth < 12
                       && !gameCycle
                       && beta  <  VALUE_KNOWN_WIN
                       && alpha > -VALUE_KNOWN_WIN)
@@ -1334,7 +1337,7 @@ namespace {
       }
 
 
-      // If the move is worse than some previously searched move, remember it to update its stats later
+      // If the move is worse than some previously searched move, remember it, to update its stats later
       if (move != bestMove)
       {
           if (capture && captureCount < 32)
@@ -1346,7 +1349,7 @@ namespace {
     }
 
     // The following condition would detect a stop only after move loop has been
-    // completed. But in this case bestValue is valid because we have fully
+    // completed. But in this case, bestValue is valid because we have fully
     // searched our subtree, and we can anyhow save the result in TT.
     /*
        if (Threads.stop)
@@ -1365,7 +1368,7 @@ namespace {
                     ss->inCheck  ? mated_in(ss->ply)
                                  : VALUE_DRAW;
 
-    // If there is a move which produces search value greater than alpha we update stats of searched moves
+    // If there is a move that produces search value greater than alpha we update the stats of searched moves
     else if (bestMove)
         update_all_stats(pos, ss, bestMove, bestValue, beta, prevSq,
                          quietsSearched, quietCount, capturesSearched, captureCount, depth);
@@ -1772,7 +1775,7 @@ namespace {
 
     for (int i : {1, 2, 4, 6})
     {
-        // Only update first 2 continuation histories if we are in check
+        // Only update the first 2 continuation histories if we are in check
         if (ss->inCheck && i > 2)
             break;
         if (is_ok((ss-i)->currentMove))
@@ -1905,7 +1908,7 @@ string UCI::pv(const Position& pos, Depth depth) {
 /// RootMove::extract_ponder_from_tt() is called in case we have no ponder move
 /// before exiting the search, for instance, in case we stop the search during a
 /// fail high at root. We try hard to have a ponder move to return to the GUI,
-/// otherwise in case of 'ponder on' we have nothing to think on.
+/// otherwise in case of 'ponder on' we have nothing to think about.
 
 bool RootMove::extract_ponder_from_tt(Position& pos) {
 
