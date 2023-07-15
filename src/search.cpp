@@ -706,16 +706,6 @@ namespace {
         && !thisThread->nmpGuardV
         &&  abs(eval) < 2 * VALUE_KNOWN_WIN)
     {
-       // Step 7. Razoring.
-       // If eval is really low check with qsearch if it can exceed alpha, if it can't,
-       // return a fail low.
-       if (  !ourMove
-           && eval < alpha - 456 - 252 * depth * depth)
-       {
-        value = qsearch<NonPV>(pos, ss, alpha - 1, alpha);
-        if (value < alpha)
-            return value;
-       }
        // Step 8. Futility pruning: child node (~25 Elo)
        if (    depth < 9 // was 8
            && !ss->ttPv
