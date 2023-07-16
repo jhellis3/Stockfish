@@ -754,14 +754,7 @@ namespace {
 
            if (nullValue >= beta)
            {
-               // Do not return unproven mate or TB scores
-               nullValue = std::min(nullValue, VALUE_MATE_IN_MAX_PLY);
-
-               if (   depth < 11
-                   && beta <= qsearch<NonPV>(pos, ss, beta-1, beta))
-                   return nullValue;
-
-               // Do verification search at high depths
+               // Verification search
                thisThread->nmpGuardV = true;
                Value v = search<NonPV>(pos, ss, beta-1, beta, depth-R, false);
                thisThread->nmpGuardV = false;
@@ -769,7 +762,7 @@ namespace {
                // While it is unsafe to return mate scores from null search, mate scores
                // from verification search are fine.
                if (v >= beta)
-                   return v > VALUE_MATE_IN_MAX_PLY ? v : nullValue;
+                   return v > VALUE_MATE_IN_MAX_PLY ? v : std::min(nullValue, VALUE_MATE_IN_MAX_PLY);
            }
            }
        }
