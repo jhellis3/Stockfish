@@ -174,11 +174,11 @@ std::string Eval::trace(Position& pos) {
   Value v;
   v = NNUE::evaluate(pos, true);
   v = pos.side_to_move() == WHITE ? v : -v;
-  ss << "NNUE evaluation        " << (v / TraditionalPawnValue) << " (white side)\n";
+  ss << "NNUE evaluation        " << 0.01 * UCI::to_cp(v) << " (white side)\n";
 
   v = evaluate(pos);
   v = pos.side_to_move() == WHITE ? v : -v;
-  ss << "Final evaluation       " << (v / TraditionalPawnValue) << " (white side)";
+  ss << "Final evaluation       " << 0.01 * UCI::to_cp(v) << " (white side)";
   ss << " [with scaled NNUE, ...]";
   ss << "\n";
 

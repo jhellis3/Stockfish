@@ -40,7 +40,6 @@ namespace Stockfish {
 struct StateInfo {
 
   // Copied when making a move
-  Key    pawnKey;
   Key    materialKey;
   Value  nonPawnMaterial[COLOR_NB];
   int    castlingRights;
@@ -336,10 +335,6 @@ inline Key Position::key() const {
   return st->rule50 < 14 ? st->key
                          : st->rule50 < 86 ? st->key ^ make_key((st->rule50 - 14) / 8)
                                            : st->key ^ make_key(st->rule50);
-}
-
-inline Key Position::pawn_key() const {
-  return st->pawnKey;
 }
 
 inline Key Position::material_key() const {
