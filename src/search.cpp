@@ -62,8 +62,8 @@ namespace {
   enum NodeType { NonPV, PV, Root };
 
   // Futility margin
-  Value futility_margin(Depth d, bool improving) {
-    return Value(140 * (d - improving));
+  Value futility_margin(Depth d, bool noTtCutNode, bool improving) {
+    return Value((140 - 40 * noTtCutNode) * (d - improving));
   }
 
   // Reductions lookup table initialized at startup
@@ -571,7 +571,7 @@ namespace {
         && !excludedMove
         && !gameCycle
         && (!ourMove || beta < VALUE_MATE_IN_MAX_PLY)
-        && ttDepth > depth - (ttBound == BOUND_EXACT)
+        && ttDepth > depth
         && ttValue != VALUE_NONE // Possible in case of TT access race or if !ttHit
         && (ttValue != VALUE_DRAW || VALUE_DRAW >= beta)
         && (ttBound & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
@@ -713,7 +713,7 @@ namespace {
            && !(thisThread->nmpGuard && nullParity)
            &&  abs(alpha) < VALUE_KNOWN_WIN
            &&  eval >= beta
-           &&  eval - futility_margin(depth, improving) - (ss-1)->statScore / 306 >= beta)
+           &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving) - (ss-1)->statScore / 306 >= beta)
            return eval;
 
        // Step 9. Null move search with verification search (~22 Elo)
@@ -1107,6 +1107,7 @@ namespace {
                 extension = depth > 8 && depth < 17 ? -3 : -1;
 
             // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
+            // Add ttValue <= value?
             else if (!gameCycle && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
                 extension = -1;
           }
@@ -1500,7 +1501,7 @@ namespace {
             return bestValue;
         }
 
-        if (PvNode && bestValue > alpha)
+        if (bestValue > alpha)
             alpha = bestValue;
 
         futilityBase = bestValue + 200;
@@ -1611,7 +1612,7 @@ namespace {
                 if (PvNode) // Update pv even in fail-high case
                     update_pv(ss->pv, move, (ss+1)->pv);
 
-                if (PvNode && value < beta) // Update alpha here!
+                if (value < beta) // Update alpha here!
                     alpha = value;
                 else
                     break; // Fail high
@@ -1802,7 +1803,7 @@ void MainThread::check_time() {
       return;
 
   // When using nodes, ensure checking rate is not lower than 0.1% of nodes
-  callsCnt = Limits.nodes ? std::min(1024, int(Limits.nodes / 1024)) : 1024;
+  callsCnt = Limits.nodes ? std::min(512, int(Limits.nodes / 1024)) : 512;
 
   static TimePoint lastInfoTime = now();
 
@@ -1819,7 +1820,7 @@ void MainThread::check_time() {
   if (ponder)
       return;
 
-  if (   (Limits.use_time_management() && (elapsed > Time.maximum() - 10 || stopOnPonderhit))
+  if (   (Limits.use_time_management() && (elapsed > Time.maximum() || stopOnPonderhit))
       || (Limits.movetime && elapsed >= Limits.movetime)
       || (Limits.nodes && Threads.nodes_searched() >= (uint64_t)Limits.nodes))
       Threads.stop = true;

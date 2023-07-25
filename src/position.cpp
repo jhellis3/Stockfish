@@ -42,7 +42,7 @@ namespace Zobrist {
   Key psq[PIECE_NB][SQUARE_NB];
   Key enpassant[FILE_NB];
   Key castling[CASTLING_RIGHT_NB];
-  Key side, noPawns;
+  Key side;
 }
 
 namespace {
@@ -125,7 +125,6 @@ void Position::init() {
       Zobrist::castling[cr] = rng.rand<Key>();
 
   Zobrist::side = rng.rand<Key>();
-  Zobrist::noPawns = rng.rand<Key>();
 
   // Prepare the cuckoo tables
   std::memset(cuckoo, 0, sizeof(cuckoo));
@@ -1174,25 +1173,6 @@ bool Position::has_repeated() const {
     }
     return false;
 }
-
-bool Position::is_scb(Color Us) const {
-
-    if (pieces(Us, QUEEN))
-        return false;
-
-    if (pieces(Us, ROOK))
-        return false;
-
-    if (pieces(Us, KNIGHT))
-        return false;
-
-    if (      pieces(Us, BISHOP)
-        && !((pieces(Us, BISHOP) & ~DarkSquares) && (pieces(Us, BISHOP) &  DarkSquares)))
-            return true;
-
-    return false;
-}
-
 
 bool Position::king_danger() const {
 
