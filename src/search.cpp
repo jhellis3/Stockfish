@@ -1102,30 +1102,27 @@ namespace {
             if (ttValue >= beta)
                 return ttValue; // beta safer?
 
-            // If we are on a cutNode, reduce it based on depth (negative extension) (~1 Elo)
-            else if (cutNode)
-                extension = depth > 8 && depth < 17 ? -3 : -1;
-
             // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
             // Add ttValue <= value?
             else if (!gameCycle && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
-                extension = -1;
+                extension = (cutNode && (ss-1)->moveCount > 1 && !(ss-1)->secondaryLine && depth > 8 && depth < 17) ? -3 : -1;
           }
       }
 
-      // Check extensions (~1 Elo)
-      if (   extension < 1
-          && givesCheck
-          && depth > 9)
-          extension = 1;
+      if (extension < 1)
+      {
+        // Check extensions (~1 Elo)
+        if (   givesCheck
+            && depth > 9)
+            extension = 1;
 
-      // Quiet ttMove extensions (~1 Elo)
-      else if (   extension < 1
-               && PvNode
-               && move == ttMove
-               && move == ss->killers[0]
-               && (*contHist[0])[movedPiece][to_sq(move)] >= 5168)
-          extension = 1;
+        // Quiet ttMove extensions (~1 Elo)
+        else if (   PvNode
+                 && move == ttMove
+                 && move == ss->killers[0]
+                 && (*contHist[0])[movedPiece][to_sq(move)] >= 5168)
+            extension = 1;
+      }
 
       // Add extension to new depth
       newDepth += extension;
@@ -1154,7 +1151,7 @@ namespace {
 
       r =         r
                 + lmrAdjustment
-                - singularQuietLMR
+                - (singularQuietLMR && moveCount == 1)
                 - (move == ttMove)
                 - ss->statScore / (11124 + 4740 * (depth > 5 && depth < 22));
 

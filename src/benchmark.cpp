@@ -104,7 +104,7 @@ namespace Stockfish {
 /// depth, perft, nodes and movetime (in millisecs), and evaluation type
 /// mixed (default), classical, NNUE.
 ///
-/// bench -> search default positions up to depth 11
+/// bench -> search default positions up to depth 12
 /// bench 64 1 15 -> search default positions up to depth 15 (TT = 64MB)
 /// bench 64 4 5000 current movetime -> search current position with 4 threads for 5 sec
 /// bench 64 1 100000 default nodes -> search default positions for 100K nodes each
