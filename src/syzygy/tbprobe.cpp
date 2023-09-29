@@ -16,33 +16,38 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "tbprobe.h"
+
+#include <sys/stat.h>
 #include <algorithm>
 #include <atomic>
+#include <cassert>
 #include <cstdint>
-#include <cstring>   // For std::memset and std::memcpy
+#include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <fstream>
+#include <initializer_list>
 #include <iostream>
-#include <list>
 #include <mutex>
 #include <sstream>
 #include <string_view>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "../bitboard.h"
+#include "../misc.h"
 #include "../movegen.h"
 #include "../position.h"
 #include "../search.h"
 #include "../types.h"
 #include "../uci.h"
 
-#include "tbprobe.h"
-
 #ifndef _WIN32
 #include <fcntl.h>
-#include <unistd.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
+#include <unistd.h>
 #else
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
@@ -109,7 +114,7 @@ template<typename T, int LE> T number(void* addr)
 {
     T v;
 
-    if ((uintptr_t)addr & (alignof(T) - 1)) // Unaligned pointer (very rare)
+    if (uintptr_t(addr) & (alignof(T) - 1)) // Unaligned pointer (very rare)
         std::memcpy(&v, addr, sizeof(T));
     else
         v = *((T*)addr);
@@ -258,7 +263,7 @@ public:
             exit(EXIT_FAILURE);
         }
 
-        *mapping = (uint64_t)mmap;
+        *mapping = uint64_t(mmap);
         *baseAddress = MapViewOfFile(mmap, FILE_MAP_READ, 0, 0, 0);
 
         if (!*baseAddress)
@@ -424,7 +429,7 @@ class TBTables {
     std::deque<TBTable<DTZ>> dtzTable;
 
     void insert(Key key, TBTable<WDL>* wdl, TBTable<DTZ>* dtz) {
-        uint32_t homeBucket = (uint32_t)key & (Size - 1);
+        uint32_t homeBucket = uint32_t(key) & (Size - 1);
         Entry entry{ key, wdl, dtz };
 
         // Ensure last element is empty to avoid overflow when looking up
@@ -437,7 +442,7 @@ class TBTables {
 
             // Robin Hood hashing: If we've probed for longer than this element,
             // insert here and search for a new spot for the other element instead.
-            uint32_t otherHomeBucket = (uint32_t)otherKey & (Size - 1);
+            uint32_t otherHomeBucket = uint32_t(otherKey) & (Size - 1);
             if (otherHomeBucket > homeBucket) {
                 std::swap(entry, hashTable[bucket]);
                 key = otherKey;
@@ -451,7 +456,7 @@ class TBTables {
 public:
     template<TBType Type>
     TBTable<Type>* get(Key key) {
-        for (const Entry* entry = &hashTable[(uint32_t)key & (Size - 1)]; ; ++entry) {
+        for (const Entry* entry = &hashTable[uint32_t(key) & (Size - 1)]; ; ++entry) {
             if (entry->key == key || !entry->get<Type>())
                 return entry->get<Type>();
         }
@@ -484,7 +489,7 @@ void TBTables::add(const std::vector<PieceType>& pieces) {
 
     file.close();
 
-    MaxCardinality = std::max((int)pieces.size(), MaxCardinality);
+    MaxCardinality = std::max(int(pieces.size()), MaxCardinality);
 
     wdlTable.emplace_back(code);
     dtzTable.emplace_back(wdlTable.back());
@@ -555,7 +560,7 @@ int decompress_pairs(PairsData* d, uint64_t idx) {
         offset -= d->blockLength[block++] + 1;
 
     // Finally, we find the start address of our block of canonical Huffman symbols
-    uint32_t* ptr = (uint32_t*)(d->data + ((uint64_t)block * d->sizeofBlock));
+    uint32_t* ptr = (uint32_t*)(d->data + (uint64_t(block) * d->sizeofBlock));
 
     // Read the first 64 bits in our block, this is a (truncated) sequence of
     // unknown number of symbols of unknown length but we know the first one
@@ -595,7 +600,7 @@ int decompress_pairs(PairsData* d, uint64_t idx) {
 
         if (buf64Size <= 32) { // Refill the buffer
             buf64Size += 32;
-            buf64 |= (uint64_t)number<uint32_t, BigEndian>(ptr++) << (64 - buf64Size);
+            buf64 |= uint64_t(number<uint32_t, BigEndian>(ptr++)) << (64 - buf64Size);
         }
     }
 
@@ -995,13 +1000,19 @@ uint8_t* set_sizes(PairsData* d, uint8_t* data) {
     d->lowestSym = (Sym*)data;
     d->base64.resize(d->maxSymLen - d->minSymLen + 1);
 
+    // See https://en.wikipedia.org/wiki/Huffman_coding
     // The canonical code is ordered such that longer symbols (in terms of
     // the number of bits of their Huffman code) have lower numeric value,
     // so that d->lowestSym[i] >= d->lowestSym[i+1] (when read as LittleEndian).
     // Starting from this we compute a base64[] table indexed by symbol length
     // and containing 64 bit values so that d->base64[i] >= d->base64[i+1].
-    // See https://en.wikipedia.org/wiki/Huffman_coding
-    for (int i = d->base64.size() - 2; i >= 0; --i) {
+
+    // Implementation note: we first cast the unsigned size_t "base64.size()"
+    // to a signed int "base64_size" variable and then we are able to subtract 2,
+    // avoiding unsigned overflow warnings.
+
+    int base64_size = static_cast<int>(d->base64.size());
+    for (int i = base64_size - 2; i >= 0; --i) {
         d->base64[i] = (d->base64[i + 1] + number<Sym, LittleEndian>(&d->lowestSym[i])
                                          - number<Sym, LittleEndian>(&d->lowestSym[i + 1])) / 2;
 
@@ -1012,10 +1023,10 @@ uint8_t* set_sizes(PairsData* d, uint8_t* data) {
     // than d->base64[i+1] and given the above assert condition, we ensure that
     // d->base64[i] >= d->base64[i+1]. Moreover for any symbol s64 of length i
     // and right-padded to 64 bits holds d->base64[i-1] >= s64 >= d->base64[i].
-    for (size_t i = 0; i < d->base64.size(); ++i)
+    for (int i = 0; i < base64_size; ++i)
         d->base64[i] <<= 64 - i - d->minSymLen; // Right-padding to 64 bits
 
-    data += d->base64.size() * sizeof(Sym);
+    data += base64_size * sizeof(Sym);
     d->symlen.resize(number<uint16_t, LittleEndian>(data)); data += sizeof(uint16_t);
     d->btree = (LR*)data;
 
@@ -1023,7 +1034,7 @@ uint8_t* set_sizes(PairsData* d, uint8_t* data) {
     // frequent adjacent pair of symbols in the source message by a new symbol,
     // reevaluating the frequencies of all of the symbol pairs with respect to
     // the extended alphabet, and then repeating the process.
-    // See http://www.larsson.dogma.net/dcc99.pdf
+    // See https://web.archive.org/web/20201106232444/http://www.larsson.dogma.net/dcc99.pdf
     std::vector<bool> visited(d->symlen.size());
 
     for (Sym sym = 0; sym < d->symlen.size(); ++sym)
@@ -1043,22 +1054,22 @@ uint8_t* set_dtz_map(TBTable<DTZ>& e, uint8_t* data, File maxFile) {
         auto flags = e.get(0, f)->flags;
         if (flags & TBFlag::Mapped) {
             if (flags & TBFlag::Wide) {
-                data += (uintptr_t)data & 1;  // Word alignment, we may have a mixed table
+                data += uintptr_t(data) & 1;  // Word alignment, we may have a mixed table
                 for (int i = 0; i < 4; ++i) { // Sequence like 3,x,x,x,1,x,0,2,x,x
-                    e.get(0, f)->map_idx[i] = (uint16_t)((uint16_t *)data - (uint16_t *)e.map + 1);
+                    e.get(0, f)->map_idx[i] = uint16_t((uint16_t*)data - (uint16_t*)e.map + 1);
                     data += 2 * number<uint16_t, LittleEndian>(data) + 2;
                 }
             }
             else {
                 for (int i = 0; i < 4; ++i) {
-                    e.get(0, f)->map_idx[i] = (uint16_t)(data - e.map + 1);
+                    e.get(0, f)->map_idx[i] = uint16_t(data - e.map + 1);
                     data += *data + 1;
                 }
             }
         }
     }
 
-    return data += (uintptr_t)data & 1; // Word alignment
+    return data += uintptr_t(data) & 1; // Word alignment
 }
 
 // Populate entry's PairsData records with data from the just memory mapped file.
@@ -1099,7 +1110,7 @@ void set(T& e, uint8_t* data) {
             set_groups(e, e.get(i, f), order[i], f);
     }
 
-    data += (uintptr_t)data & 1; // Word alignment
+    data += uintptr_t(data) & 1; // Word alignment
 
     for (File f = FILE_A; f <= maxFile; ++f)
         for (int i = 0; i < sides; i++)
@@ -1121,7 +1132,7 @@ void set(T& e, uint8_t* data) {
 
     for (File f = FILE_A; f <= maxFile; ++f)
         for (int i = 0; i < sides; i++) {
-            data = (uint8_t*)(((uintptr_t)data + 0x3F) & ~0x3F); // 64 byte alignment
+            data = (uint8_t*)((uintptr_t(data) + 0x3F) & ~0x3F); // 64 byte alignment
             (d = e.get(i, f))->data = data;
             data += d->blocksNum * d->sizeofBlock;
         }

@@ -21,6 +21,10 @@
 #ifndef NNUE_LAYERS_CLIPPED_RELU_H_INCLUDED
 #define NNUE_LAYERS_CLIPPED_RELU_H_INCLUDED
 
+#include <algorithm>
+#include <cstdint>
+#include <iosfwd>
+
 #include "../nnue_common.h"
 
 namespace Stockfish::Eval::NNUE::Layers {
@@ -168,7 +172,7 @@ namespace Stockfish::Eval::NNUE::Layers {
 
       for (IndexType i = Start; i < InputDimensions; ++i) {
         output[i] = static_cast<OutputType>(
-            std::max(0, std::min(127, input[i] >> WeightScaleBits)));
+            std::clamp(input[i] >> WeightScaleBits, 0, 127));
       }
     }
   };

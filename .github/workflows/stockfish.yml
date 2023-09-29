@@ -16,10 +16,6 @@ jobs:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
       # returns null if no pre-release exists
       - name: Get Commit SHA of Latest Pre-release
         run: |
@@ -37,6 +33,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  Analyzers:
+    uses: ./.github/workflows/stockfish_analyzers.yml
   Sanitizers:
     uses: ./.github/workflows/stockfish_sanitizers.yml
   Tests:

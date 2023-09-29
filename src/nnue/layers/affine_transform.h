@@ -21,9 +21,9 @@
 #ifndef NNUE_LAYERS_AFFINE_TRANSFORM_H_INCLUDED
 #define NNUE_LAYERS_AFFINE_TRANSFORM_H_INCLUDED
 
+#include <cstdint>
 #include <iostream>
-#include <algorithm>
-#include <type_traits>
+
 #include "../nnue_common.h"
 #include "simd.h"
 
@@ -45,6 +45,7 @@ namespace Stockfish::Eval::NNUE::Layers {
   template <IndexType InputDimensions, IndexType PaddedInputDimensions, IndexType OutputDimensions>
   static void affine_transform_non_ssse3(std::int32_t* output, const std::int8_t* weights, const std::int32_t* biases, const std::uint8_t* input)
   {
+# if defined(USE_SSE2) || defined(USE_MMX) || defined(USE_NEON_DOTPROD) || defined(USE_NEON)
 # if defined(USE_SSE2)
     // At least a multiple of 16, with SSE2.
     constexpr IndexType NumChunks = ceil_to_multiple<IndexType>(InputDimensions, 16) / 16;
@@ -129,17 +130,24 @@ namespace Stockfish::Eval::NNUE::Layers {
       }
       output[i] = sum[0] + sum[1] + sum[2] + sum[3];
 
-# else
-      std::int32_t sum = biases[i];
-      for (IndexType j = 0; j < InputDimensions; ++j) {
-        sum += weights[offset + j] * input[j];
-      }
-      output[i] = sum;
 # endif
     }
 
 # if defined(USE_MMX)
     _mm_empty();
+# endif
+
+# else
+  std::memcpy(output, biases, sizeof(std::int32_t) * OutputDimensions);
+
+  // Traverse weights in transpose order to take advantage of input sparsity
+  for (IndexType i = 0; i < InputDimensions; ++i)
+      if (input[i]) {
+          const std::int8_t* w = &weights[i];
+          const int in = input[i];
+          for (IndexType j = 0; j < OutputDimensions; ++j)
+              output[j] += w[j * PaddedInputDimensions] * in;
+      }
 # endif
   }
 #endif
@@ -210,6 +218,11 @@ namespace Stockfish::Eval::NNUE::Layers {
     void propagate(
         const InputType* input, OutputType* output) const {
 
+#if defined (USE_SSSE3)
+
+      if constexpr (OutputDimensions > 1)
+      {
+
 #if defined (USE_AVX512)
       using vec_t = __m512i;
       #define vec_setzero _mm512_setzero_si512
@@ -233,15 +246,10 @@ namespace Stockfish::Eval::NNUE::Layers {
       #define vec_hadd Simd::m128_hadd
 #endif
 
-#if defined (USE_SSSE3)
-      const auto inputVector = reinterpret_cast<const vec_t*>(input);
+        static constexpr IndexType OutputSimdWidth = sizeof(vec_t) / sizeof(OutputType);
 
-      static constexpr IndexType OutputSimdWidth = sizeof(vec_t) / sizeof(OutputType);
+        static_assert(OutputDimensions % OutputSimdWidth == 0);
 
-      static_assert(OutputDimensions % OutputSimdWidth == 0 || OutputDimensions == 1);
-
-      if constexpr (OutputDimensions % OutputSimdWidth == 0)
-      {
         constexpr IndexType NumChunks = ceil_to_multiple<IndexType>(InputDimensions, 8) / 4;
         constexpr IndexType NumRegs = OutputDimensions / OutputSimdWidth;
 
@@ -264,26 +272,58 @@ namespace Stockfish::Eval::NNUE::Layers {
         vec_t* outptr = reinterpret_cast<vec_t*>(output);
         for (IndexType k = 0; k < NumRegs; ++k)
           outptr[k] = acc[k];
-      }
-      else if constexpr (OutputDimensions == 1)
-      {
-        constexpr IndexType NumChunks = PaddedInputDimensions / SimdWidth;
-        vec_t sum0 = vec_setzero();
-        const auto row0 = reinterpret_cast<const vec_t*>(&weights[0]);
-
-        for (int j = 0; j < (int)NumChunks; ++j)
-        {
-          const vec_t in = inputVector[j];
-          vec_add_dpbusd_32(sum0, in, row0[j]);
-        }
-        output[0] = vec_hadd(sum0, biases[0]);
-      }
 
 # undef vec_setzero
 # undef vec_set_32
 # undef vec_add_dpbusd_32
 # undef vec_add_dpbusd_32x2
 # undef vec_hadd
+
+      }
+      else if constexpr (OutputDimensions == 1)
+      {
+
+// We cannot use AVX512 for the last layer because there's only 32 inputs and the buffer is not padded to 64 elements.
+#if defined (USE_AVX2)
+      using vec_t = __m256i;
+      #define vec_setzero _mm256_setzero_si256
+      #define vec_set_32 _mm256_set1_epi32
+      #define vec_add_dpbusd_32 Simd::m256_add_dpbusd_epi32
+      #define vec_add_dpbusd_32x2 Simd::m256_add_dpbusd_epi32x2
+      #define vec_hadd Simd::m256_hadd
+#elif defined (USE_SSSE3)
+      using vec_t = __m128i;
+      #define vec_setzero _mm_setzero_si128
+      #define vec_set_32 _mm_set1_epi32
+      #define vec_add_dpbusd_32 Simd::m128_add_dpbusd_epi32
+      #define vec_add_dpbusd_32x2 Simd::m128_add_dpbusd_epi32x2
+      #define vec_hadd Simd::m128_hadd
+#endif
+
+        const auto inputVector = reinterpret_cast<const vec_t*>(input);
+
+        static constexpr IndexType InputSimdWidth = sizeof(vec_t) / sizeof(InputType);
+
+        static_assert(PaddedInputDimensions % InputSimdWidth == 0);
+
+        constexpr IndexType NumChunks = PaddedInputDimensions / InputSimdWidth;
+        vec_t sum0 = vec_setzero();
+        const auto row0 = reinterpret_cast<const vec_t*>(&weights[0]);
+
+        for (int j = 0; j < int(NumChunks); ++j)
+        {
+          const vec_t in = inputVector[j];
+          vec_add_dpbusd_32(sum0, in, row0[j]);
+        }
+        output[0] = vec_hadd(sum0, biases[0]);
+
+# undef vec_setzero
+# undef vec_set_32
+# undef vec_add_dpbusd_32
+# undef vec_add_dpbusd_32x2
+# undef vec_hadd
+
+      }
 #else
       // Use old implementation for the other architectures.
       affine_transform_non_ssse3<

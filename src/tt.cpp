@@ -16,14 +16,17 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <cstring>   // For std::memset
+#include "tt.h"
+
+#include <cassert>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <thread>
+#include <vector>
 
-#include "bitboard.h"
 #include "misc.h"
 #include "thread.h"
-#include "tt.h"
 #include "uci.h"
 
 namespace Stockfish {
@@ -37,7 +40,7 @@ void TTEntry::save(Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev) 
 
   // Preserve any existing move for the same position
   if (m || k != key)
-      move16 = (uint16_t)m;
+      move16 = uint16_t(m);
 
   // Overwrite less valuable entries (cheapest checks first)
   if (   b == BOUND_EXACT
@@ -47,11 +50,11 @@ void TTEntry::save(Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev) 
       assert(d > DEPTH_OFFSET);
       assert(d < 256 + DEPTH_OFFSET);
 
-      key       =  k;
-      depth8    = (uint8_t)(d - DEPTH_OFFSET);
-      genBound8 = (uint8_t)(TT.generation8 | uint8_t(pv) << 2 | b);
-      value16   = (int16_t)v;
-      eval16    = (int16_t)ev;
+      key       = k;
+      depth8    = uint8_t(d - DEPTH_OFFSET);
+      genBound8 = uint8_t(TT.generation8 | uint8_t(pv) << 2 | b);
+      value16   = int16_t(v);
+      eval16    = int16_t(ev);
   }
 }
 
@@ -125,7 +128,7 @@ TTEntry* TranspositionTable::probe(const Key key, bool& found) const {
       {
           tte[i].genBound8 = uint8_t(generation8 | (tte[i].genBound8 & (GENERATION_DELTA - 1))); // Refresh
 
-          return found = (bool)tte[i].depth8, &tte[i];
+          return found = bool(tte[i].depth8), &tte[i];
       }
 
   // Find an entry to be replaced according to the replacement strategy

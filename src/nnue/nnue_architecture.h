@@ -21,18 +21,16 @@
 #ifndef NNUE_ARCHITECTURE_H_INCLUDED
 #define NNUE_ARCHITECTURE_H_INCLUDED
 
-#include <memory>
-
-#include "nnue_common.h"
+#include <cstdint>
+#include <cstring>
+#include <iosfwd>
 
 #include "features/half_ka_v2_hm.h"
-
-#include "layers/affine_transform_sparse_input.h"
 #include "layers/affine_transform.h"
+#include "layers/affine_transform_sparse_input.h"
 #include "layers/clipped_relu.h"
 #include "layers/sqr_clipped_relu.h"
-
-#include "../misc.h"
+#include "nnue_common.h"
 
 namespace Stockfish::Eval::NNUE {
 
@@ -40,7 +38,7 @@ namespace Stockfish::Eval::NNUE {
 using FeatureSet = Features::HalfKAv2_hm;
 
 // Number of input feature dimensions after conversion
-constexpr IndexType TransformedFeatureDimensions = 2048;
+constexpr IndexType TransformedFeatureDimensions = 2560;
 constexpr IndexType PSQTBuckets = 8;
 constexpr IndexType LayerStacks = 8;
 

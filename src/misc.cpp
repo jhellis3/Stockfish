@@ -16,6 +16,8 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "misc.h"
+
 #ifdef _WIN32
 #if _WIN32_WINNT < 0x0601
 #undef  _WIN32_WINNT
@@ -44,17 +46,19 @@ using fun8_t = bool(*)(HANDLE, BOOL, PTOKEN_PRIVILEGES, DWORD, PTOKEN_PRIVILEGES
 }
 #endif
 
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <string_view>
-#include <vector>
+
+#include "types.h"
 
 #if defined(__linux__) && !defined(__ANDROID__)
-#include <stdlib.h>
 #include <sys/mman.h>
 #endif
 
@@ -63,17 +67,12 @@ using fun8_t = bool(*)(HANDLE, BOOL, PTOKEN_PRIVILEGES, DWORD, PTOKEN_PRIVILEGES
 #include <stdlib.h>
 #endif
 
-#include "misc.h"
-#include "thread.h"
-
-using namespace std;
-
 namespace Stockfish {
 
 namespace {
 
 /// Version number or dev.
-constexpr string_view version = "dev";
+constexpr std::string_view version = "dev";
 
 /// Our fancy logging facility. The trick here is to replace cin.rdbuf() and
 /// cout.rdbuf() with two Tie objects that tie cin and cout to a file stream. We
@@ -81,16 +80,16 @@ constexpr string_view version = "dev";
 /// usual I/O functionality, all without changing a single line of code!
 /// Idea from http://groups.google.com/group/comp.lang.c++/msg/1d941c0f26ea0d81
 
-struct Tie: public streambuf { // MSVC requires split streambuf for cin and cout
+struct Tie: public std::streambuf { // MSVC requires split streambuf for cin and cout
 
-  Tie(streambuf* b, streambuf* l) : buf(b), logBuf(l) {}
+  Tie(std::streambuf* b, std::streambuf* l) : buf(b), logBuf(l) {}
 
   int sync() override { return logBuf->pubsync(), buf->pubsync(); }
-  int overflow(int c) override { return log(buf->sputc((char)c), "<< "); }
+  int overflow(int c) override { return log(buf->sputc(char(c)), "<< "); }
   int underflow() override { return buf->sgetc(); }
   int uflow() override { return log(buf->sbumpc(), ">> "); }
 
-  streambuf *buf, *logBuf;
+  std::streambuf *buf, *logBuf;
 
   int log(int c, const char* prefix) {
 
@@ -99,16 +98,16 @@ struct Tie: public streambuf { // MSVC requires split streambuf for cin and cout
     if (last == '\n')
         logBuf->sputn(prefix, 3);
 
-    return last = logBuf->sputc((char)c);
+    return last = logBuf->sputc(char(c));
   }
 };
 
 class Logger {
 
-  Logger() : in(cin.rdbuf(), file.rdbuf()), out(cout.rdbuf(), file.rdbuf()) {}
+  Logger() : in(std::cin.rdbuf(), file.rdbuf()), out(std::cout.rdbuf(), file.rdbuf()) {}
  ~Logger() { start(""); }
 
-  ofstream file;
+  std::ofstream file;
   Tie in, out;
 
 public:
@@ -118,23 +117,23 @@ public:
 
     if (l.file.is_open())
     {
-        cout.rdbuf(l.out.buf);
-        cin.rdbuf(l.in.buf);
+        std::cout.rdbuf(l.out.buf);
+        std::cin.rdbuf(l.in.buf);
         l.file.close();
     }
 
     if (!fname.empty())
     {
-        l.file.open(fname, ifstream::out);
+        l.file.open(fname, std::ifstream::out);
 
         if (!l.file.is_open())
         {
-            cerr << "Unable to open debug log file " << fname << endl;
+            std::cerr << "Unable to open debug log file " << fname << std::endl;
             exit(EXIT_FAILURE);
         }
 
-        cin.rdbuf(&l.in);
-        cout.rdbuf(&l.out);
+        std::cin.rdbuf(&l.in);
+        std::cout.rdbuf(&l.out);
     }
   }
 };
@@ -152,9 +151,9 @@ public:
 /// For releases (non dev builds) we only include the version number:
 /// Stockfish version
 
-string engine_info(bool to_uci) {
-  stringstream ss;
-  ss << "Crystal " << version << setfill('0');
+std::string engine_info(bool to_uci) {
+  std::stringstream ss;
+  ss << "Crystal " << version << std::setfill('0');
 
   if constexpr (version == "dev")
   {
@@ -162,12 +161,12 @@ string engine_info(bool to_uci) {
       #ifdef GIT_DATE
       ss << stringify(GIT_DATE);
       #else
-      constexpr string_view months("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec");
-      string month, day, year;
-      stringstream date(__DATE__); // From compiler, format is "Sep 21 2008"
+      constexpr std::string_view months("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec");
+      std::string month, day, year;
+      std::stringstream date(__DATE__); // From compiler, format is "Sep 21 2008"
 
       date >> month >> day >> year;
-      ss << year << setw(2) << setfill('0') << (1 + months.find(month) / 4) << setw(2) << setfill('0') << day;
+      ss << year << std::setw(2) << std::setfill('0') << (1 + months.find(month) / 4) << std::setw(2) << std::setfill('0') << day;
       #endif
 
       ss << "-";
@@ -194,22 +193,21 @@ std::string compiler_info() {
 
 /// Predefined macros hell:
 ///
-/// __GNUC__           Compiler is gcc, Clang or Intel on Linux
-/// __INTEL_COMPILER   Compiler is Intel
-/// _MSC_VER           Compiler is MSVC or Intel on Windows
-/// _WIN32             Building on Windows (any)
-/// _WIN64             Building on Windows 64 bit
+/// __GNUC__                Compiler is GCC, Clang or ICX
+/// __clang__               Compiler is Clang or ICX
+/// __INTEL_LLVM_COMPILER   Compiler is ICX
+/// _MSC_VER                Compiler is MSVC
+/// _WIN32                  Building on Windows (any)
+/// _WIN64                  Building on Windows 64 bit
 
-  std::string compiler = "\nCompiled by ";
+  std::string compiler = "\nCompiled by                : ";
 
-  #ifdef __clang__
+  #if defined(__INTEL_LLVM_COMPILER)
+     compiler += "ICX ";
+     compiler += stringify(__INTEL_LLVM_COMPILER);
+  #elif defined(__clang__)
      compiler += "clang++ ";
      compiler += make_version_string(__clang_major__, __clang_minor__, __clang_patchlevel__);
-  #elif __INTEL_COMPILER
-     compiler += "Intel compiler ";
-     compiler += "(version ";
-     compiler += stringify(__INTEL_COMPILER) " update " stringify(__INTEL_COMPILER_UPDATE);
-     compiler += ")";
   #elif _MSC_VER
      compiler += "MSVC ";
      compiler += "(version ";
@@ -217,9 +215,9 @@ std::string compiler_info() {
      compiler += ")";
   #elif defined(__e2k__) && defined(__LCC__)
     #define dot_ver2(n) \
-      compiler += (char)'.'; \
-      compiler += (char)('0' + (n) / 10); \
-      compiler += (char)('0' + (n) % 10);
+      compiler += char('.'); \
+      compiler += char('0' + (n) / 10); \
+      compiler += char('0' + (n) % 10);
 
      compiler += "MCST LCC ";
      compiler += "(version ";
@@ -255,8 +253,15 @@ std::string compiler_info() {
      compiler += " on unknown system";
   #endif
 
-  compiler += "\nCompilation settings include: ";
-  compiler += (Is64Bit ? " 64bit" : " 32bit");
+  compiler += "\nCompilation architecture   : ";
+  #if defined(ARCH)
+     compiler += stringify(ARCH);
+  #else
+     compiler += "(undefined architecture)";
+  #endif
+
+  compiler += "\nCompilation settings       : ";
+  compiler += (Is64Bit ? "64bit" : "32bit");
   #if defined(USE_VNNI)
     compiler += " VNNI";
   #endif
@@ -290,12 +295,13 @@ std::string compiler_info() {
     compiler += " DEBUG";
   #endif
 
-  compiler += "\n__VERSION__ macro expands to: ";
+  compiler += "\nCompiler __VERSION__ macro : ";
   #ifdef __VERSION__
      compiler += __VERSION__;
   #else
      compiler += "(undefined macro)";
   #endif
+
   compiler += "\n";
 
   return compiler;
@@ -375,7 +381,7 @@ void dbg_print() {
     for (int i = 0; i < MaxDebugSlots; ++i)
         if ((n = stdev[i][0]))
         {
-            double r = sqrtl(E(stdev[i][2]) - sqr(E(stdev[i][1])));
+            double r = sqrt(E(stdev[i][2]) - sqr(E(stdev[i][1])));
             std::cerr << "Stdev #" << i
                       << ": Total " << n << " Stdev " << r
                       << std::endl;
@@ -385,8 +391,8 @@ void dbg_print() {
         if ((n = correl[i][0]))
         {
             double r = (E(correl[i][5]) - E(correl[i][1]) * E(correl[i][3]))
-                       / (  sqrtl(E(correl[i][2]) - sqr(E(correl[i][1])))
-                          * sqrtl(E(correl[i][4]) - sqr(E(correl[i][3]))));
+                       / (  sqrt(E(correl[i][2]) - sqr(E(correl[i][1])))
+                          * sqrt(E(correl[i][4]) - sqr(E(correl[i][3]))));
             std::cerr << "Correl. #" << i
                       << ": Total " << n << " Coefficient " << r
                       << std::endl;
@@ -426,13 +432,7 @@ void prefetch(void*) {}
 
 void prefetch(void* addr) {
 
-#  if defined(__INTEL_COMPILER)
-   // This hack prevents prefetches from being optimized away by
-   // Intel compiler. Both MSVC and gcc seem not be affected by this.
-   __asm__ ("");
-#  endif
-
-#  if defined(__INTEL_COMPILER) || defined(_MSC_VER)
+#  if defined(_MSC_VER)
   _mm_prefetch((char*)addr, _MM_HINT_T0);
 #  else
   __builtin_prefetch(addr);
@@ -498,13 +498,13 @@ static void* aligned_large_pages_alloc_windows([[maybe_unused]] size_t allocSize
   if (!hAdvapi32)
       hAdvapi32 = LoadLibrary(TEXT("advapi32.dll"));
 
-  auto fun6 = (fun6_t)(void(*)())GetProcAddress(hAdvapi32, "OpenProcessToken");
+  auto fun6 = fun6_t((void(*)())GetProcAddress(hAdvapi32, "OpenProcessToken"));
   if (!fun6)
       return nullptr;
-  auto fun7 = (fun7_t)(void(*)())GetProcAddress(hAdvapi32, "LookupPrivilegeValueA");
+  auto fun7 = fun7_t((void(*)())GetProcAddress(hAdvapi32, "LookupPrivilegeValueA"));
   if (!fun7)
       return nullptr;
-  auto fun8 = (fun8_t)(void(*)())GetProcAddress(hAdvapi32, "AdjustTokenPrivileges");
+  auto fun8 = fun8_t((void(*)())GetProcAddress(hAdvapi32, "AdjustTokenPrivileges"));
   if (!fun8)
       return nullptr;
 
@@ -699,10 +699,10 @@ void bindThisThread(size_t idx) {
 
   // Early exit if the needed API are not available at runtime
   HMODULE k32 = GetModuleHandle(TEXT("Kernel32.dll"));
-  auto fun2 = (fun2_t)(void(*)())GetProcAddress(k32, "GetNumaNodeProcessorMaskEx");
-  auto fun3 = (fun3_t)(void(*)())GetProcAddress(k32, "SetThreadGroupAffinity");
-  auto fun4 = (fun4_t)(void(*)())GetProcAddress(k32, "GetNumaNodeProcessorMask2");
-  auto fun5 = (fun5_t)(void(*)())GetProcAddress(k32, "GetMaximumProcessorGroupCount");
+  auto fun2 = fun2_t((void(*)())GetProcAddress(k32, "GetNumaNodeProcessorMaskEx"));
+  auto fun3 = fun3_t((void(*)())GetProcAddress(k32, "SetThreadGroupAffinity"));
+  auto fun4 = fun4_t((void(*)())GetProcAddress(k32, "GetNumaNodeProcessorMask2"));
+  auto fun5 = fun5_t((void(*)())GetProcAddress(k32, "GetMaximumProcessorGroupCount"));
 
   if (!fun2 || !fun3)
       return;
@@ -740,12 +740,12 @@ void bindThisThread(size_t idx) {
 
 namespace CommandLine {
 
-string argv0;            // path+name of the executable binary, as given by argv[0]
-string binaryDirectory;  // path of the executable directory
-string workingDirectory; // path of the working directory
+std::string argv0;            // path+name of the executable binary, as given by argv[0]
+std::string binaryDirectory;  // path of the executable directory
+std::string workingDirectory; // path of the working directory
 
 void init([[maybe_unused]] int argc, char* argv[]) {
-    string pathSeparator;
+    std::string pathSeparator;
 
     // extract the path+name of the executable binary
     argv0 = argv[0];

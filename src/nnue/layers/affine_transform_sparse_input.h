@@ -21,10 +21,12 @@
 #ifndef NNUE_LAYERS_AFFINE_TRANSFORM_SPARSE_INPUT_H_INCLUDED
 #define NNUE_LAYERS_AFFINE_TRANSFORM_SPARSE_INPUT_H_INCLUDED
 
-#include <iostream>
 #include <algorithm>
 #include <array>
-#include <type_traits>
+#include <cstdint>
+#include <iostream>
+
+#include "../../bitboard.h"
 #include "../nnue_common.h"
 #include "affine_transform.h"
 #include "simd.h"
@@ -72,10 +74,10 @@ namespace Stockfish::Eval::NNUE::Layers {
     #define vec128_storeu(a, b) _mm_storeu_si128(a, b)
     #define vec128_add(a, b) _mm_add_epi16(a, b)
 #elif defined (USE_NEON)
-    using vec_t = int32x4_t;
+    using vec_t = uint32x4_t;
     static const std::uint32_t Mask[4] = {1, 2, 4, 8};
     #define vec_nnz(a) vaddvq_u32(vandq_u32(vtstq_u32(a, a), vld1q_u32(Mask)))
-    using vec128_t = int16x8_t;
+    using vec128_t = uint16x8_t;
     #define vec128_zero vdupq_n_u16(0)
     #define vec128_set_16(a) vdupq_n_u16(a)
     #define vec128_load(a) vld1q_u16(reinterpret_cast<const std::uint16_t*>(a))
@@ -100,7 +102,7 @@ namespace Stockfish::Eval::NNUE::Layers {
       for (IndexType j = 0; j < InputsPerChunk; ++j)
       {
         const vec_t inputChunk = inputVector[i * InputsPerChunk + j];
-        nnz |= (unsigned)vec_nnz(inputChunk) << (j * InputSimdWidth);
+        nnz |= unsigned(vec_nnz(inputChunk)) << (j * InputSimdWidth);
       }
       for (IndexType j = 0; j < OutputsPerChunk; ++j)
       {

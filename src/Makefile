@@ -104,9 +104,13 @@ VPATH = syzygy:nnue:nnue/features
 ### 2.1. General and architecture defaults
 
 ifeq ($(ARCH),)
-   ARCH = x86-64-avx2
-   help_skip_sanity = yes
+   ARCH = native
 endif
+
+ifeq ($(ARCH), native)
+   override ARCH = $(shell $(SHELL) ../scripts/get_native_properties.sh | cut -d " " -f 1)
+endif
+
 # explicitly check for the list of supported architectures (as listed with make help),
 # the user can override with `make ARCH=x86-32-vnni256 SUPPORTED_ARCH=true`
 ifeq ($(ARCH), $(filter $(ARCH), \
@@ -562,7 +566,7 @@ endif
 ### 3.3 Optimization
 ifeq ($(optimize),yes)
 
-	CXXFLAGS += -O3
+	CXXFLAGS += -O3 -funroll-loops
 
 	ifeq ($(comp),gcc)
 		ifeq ($(OS), Android)
@@ -711,6 +715,11 @@ ifneq ($(GIT_DATE), )
 	CXXFLAGS += -DGIT_DATE=$(GIT_DATE)
 endif
 
+### 3.7.3 Try to include architecture
+ifneq ($(ARCH), )
+	CXXFLAGS += -DARCH=$(ARCH)
+endif
+
 ### 3.8 Link Time Optimization
 ### This is a mix of compile and link time options because the lto link phase
 ### needs access to the optimization flags.
@@ -757,12 +766,11 @@ endif
 ### Section 4. Public Targets
 ### ==========================================================================
 
-
 help:
 	@echo ""
 	@echo "To compile crystal, type: "
 	@echo ""
-	@echo "make target ARCH=arch [COMP=compiler] [COMPCXX=cxx]"
+	@echo "make -j target [ARCH=arch] [COMP=compiler] [COMPCXX=cxx]"
 	@echo ""
 	@echo "Supported targets:"
 	@echo ""
@@ -776,6 +784,7 @@ help:
 	@echo ""
 	@echo "Supported archs:"
 	@echo ""
+	@echo "native                  > select the best architecture for the host processor (default)"
 	@echo "x86-64-vnni512          > x86 64-bit with vnni 512bit support"
 	@echo "x86-64-vnni256          > x86 64-bit with vnni 512bit support, limit operands to 256bit wide"
 	@echo "x86-64-avx512           > x86 64-bit with avx512 support"
@@ -804,8 +813,8 @@ help:
 	@echo ""
 	@echo "Supported compilers:"
 	@echo ""
-	@echo "gcc                     > Gnu compiler (default)"
-	@echo "mingw                   > Gnu compiler with MinGW under Windows"
+	@echo "gcc                     > GNU compiler (default)"
+	@echo "mingw                   > GNU compiler with MinGW under Windows"
 	@echo "clang                   > LLVM Clang compiler"
 	@echo "icx                     > Intel oneAPI DPC++/C++ Compiler"
 	@echo "ndk                     > Google NDK to cross-compile for Android"
@@ -822,21 +831,20 @@ help:
 	@echo "make -j profile-build ARCH=x86-64-avxvnni COMP=gcc COMPCXX=g++-12.0"
 	@echo "make -j build ARCH=x86-64-ssse3 COMP=clang"
 	@echo ""
-	@echo "-------------------------------"
-ifeq ($(SUPPORTED_ARCH)$(help_skip_sanity), true)
-	@echo "The selected architecture $(ARCH) will enable the following configuration: "
-	@$(MAKE) ARCH=$(ARCH) COMP=$(COMP) config-sanity
-else
+ifneq ($(SUPPORTED_ARCH), true)
 	@echo "Specify a supported architecture with the ARCH option for more details"
 	@echo ""
 endif
 
 
-.PHONY: help build profile-build strip install clean net objclean profileclean \
-	config-sanity \
+.PHONY: help analyze build profile-build strip install clean net \
+	objclean profileclean config-sanity \
 	icx-profile-use icx-profile-make \
 	gcc-profile-use gcc-profile-make \
 	clang-profile-use clang-profile-make FORCE
+
+analyze: net config-sanity objclean
+	$(MAKE) -k ARCH=$(ARCH) COMP=$(COMP) $(OBJS)
 
 build: net config-sanity
 	$(MAKE) ARCH=$(ARCH) COMP=$(COMP) all
@@ -869,42 +877,6 @@ install:
 clean: objclean profileclean
 	@rm -f .depend *~ core
 
-# evaluation network (nnue)
-net:
-	$(eval nnuenet := $(shell grep EvalFileDefaultName evaluate.h | grep define | sed 's/.*\(nn-[a-z0-9]\{12\}.nnue\).*/\1/'))
-	@echo "Default net: $(nnuenet)"
-	$(eval nnuedownloadurl1 := https://tests.stockfishchess.org/api/nn/$(nnuenet))
-	$(eval nnuedownloadurl2 := https://github.com/official-stockfish/networks/raw/master/$(nnuenet))
-	$(eval curl_or_wget := $(shell if hash curl 2>/dev/null; then echo "curl -skL"; elif hash wget 2>/dev/null; then echo "wget -qO-"; fi))
-	@if [ "x$(curl_or_wget)" = "x" ]; then \
-	    echo "Neither curl nor wget is installed. Install one of these tools unless the net has been downloaded manually"; \
-        fi
-	$(eval shasum_command := $(shell if hash shasum 2>/dev/null; then echo "shasum -a 256 "; elif hash sha256sum 2>/dev/null; then echo "sha256sum "; fi))
-	@if [ "x$(shasum_command)" = "x" ]; then \
-            echo "shasum / sha256sum not found, skipping net validation"; \
-        fi
-	@for nnuedownloadurl in "$(nnuedownloadurl1)" "$(nnuedownloadurl2)"; do \
-	   if test -f "$(nnuenet)"; then \
-	      echo "$(nnuenet) available."; \
-	   else \
-	      if [ "x$(curl_or_wget)" != "x" ]; then \
-                 echo "Downloading $${nnuedownloadurl}"; $(curl_or_wget) $${nnuedownloadurl} > $(nnuenet);\
-              else \
-                 echo "No net found and download not possible"; exit 1;\
-	      fi; \
-	   fi; \
-	   if [ "x$(shasum_command)" != "x" ]; then \
-	      if [ "$(nnuenet)" != "nn-"`$(shasum_command) $(nnuenet) | cut -c1-12`".nnue" ]; then \
-	         echo "Removing failed download"; rm -f $(nnuenet); \
-	      else \
-	         echo "Network validated"; break; \
-	      fi; \
-	   fi; \
-	done
-	@if ! test -f "$(nnuenet)"; then \
-	    echo "Failed to download $(nnuenet)."; \
-	fi
-
 # clean binaries and objects
 objclean:
 	@rm -f $(EXE) *.o ./syzygy/*.o ./nnue/*.o ./nnue/features/*.o
@@ -919,6 +891,53 @@ profileclean:
 	@rm -f $(EXE).res
 	@rm -f ./-lstdc++.res
 
+# set up shell variables for the net stuff
+netvariables:
+	$(eval nnuenet := $(shell grep EvalFileDefaultName evaluate.h | grep define | sed 's/.*\(nn-[a-z0-9]\{12\}.nnue\).*/\1/'))
+	$(eval nnuedownloadurl1 := https://tests.stockfishchess.org/api/nn/$(nnuenet))
+	$(eval nnuedownloadurl2 := https://github.com/official-stockfish/networks/raw/master/$(nnuenet))
+	$(eval curl_or_wget := $(shell if hash curl 2>/dev/null; then echo "curl -skL"; elif hash wget 2>/dev/null; then echo "wget -qO-"; fi))
+	$(eval shasum_command := $(shell if hash shasum 2>/dev/null; then echo "shasum -a 256 "; elif hash sha256sum 2>/dev/null; then echo "sha256sum "; fi))
+
+# evaluation network (nnue)
+net: netvariables
+	@echo "Default net: $(nnuenet)"
+	@if [ "x$(curl_or_wget)" = "x" ]; then \
+		echo "Neither curl nor wget is installed. Install one of these tools unless the net has been downloaded manually"; \
+	fi
+	@if [ "x$(shasum_command)" = "x" ]; then \
+		echo "shasum / sha256sum not found, skipping net validation"; \
+	elif test -f "$(nnuenet)"; then \
+		if [ "$(nnuenet)" != "nn-"`$(shasum_command) $(nnuenet) | cut -c1-12`".nnue" ]; then \
+			echo "Removing invalid network"; rm -f $(nnuenet); \
+		fi; \
+	fi;
+	@for nnuedownloadurl in "$(nnuedownloadurl1)" "$(nnuedownloadurl2)"; do \
+		if test -f "$(nnuenet)"; then \
+			echo "$(nnuenet) available : OK"; break; \
+		else \
+			if [ "x$(curl_or_wget)" != "x" ]; then \
+				echo "Downloading $${nnuedownloadurl}"; $(curl_or_wget) $${nnuedownloadurl} > $(nnuenet);\
+			else \
+				echo "No net found and download not possible"; exit 1;\
+			fi; \
+		fi; \
+		if [ "x$(shasum_command)" != "x" ]; then \
+			if [ "$(nnuenet)" != "nn-"`$(shasum_command) $(nnuenet) | cut -c1-12`".nnue" ]; then \
+				echo "Removing failed download"; rm -f $(nnuenet); \
+			fi; \
+		fi; \
+	done
+	@if ! test -f "$(nnuenet)"; then \
+		echo "Failed to download $(nnuenet)."; \
+	fi;
+	@if [ "x$(shasum_command)" != "x" ]; then \
+		if [ "$(nnuenet)" = "nn-"`$(shasum_command) $(nnuenet) | cut -c1-12`".nnue" ]; then \
+			echo "Network validated"; break; \
+		fi; \
+	fi; \
+
+# default target
 default:
 	help
 

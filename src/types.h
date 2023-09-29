@@ -37,10 +37,7 @@
 ///               | only in 64-bit mode and requires hardware with pext support.
 
 #include <cassert>
-#include <cctype>
 #include <cstdint>
-#include <cstdlib>
-#include <algorithm>
 
 #if defined(_MSC_VER)
 // Disable some silly and noisy warning from MSVC compiler
@@ -51,11 +48,12 @@
 
 /// Predefined macros hell:
 ///
-/// __GNUC__           Compiler is gcc, Clang or Intel on Linux
-/// __INTEL_COMPILER   Compiler is Intel
-/// _MSC_VER           Compiler is MSVC or Intel on Windows
-/// _WIN32             Building on Windows (any)
-/// _WIN64             Building on Windows 64 bit
+/// __GNUC__                Compiler is GCC, Clang or ICX
+/// __clang__               Compiler is Clang or ICX
+/// __INTEL_LLVM_COMPILER   Compiler is ICX
+/// _MSC_VER                Compiler is MSVC
+/// _WIN32                  Building on Windows (any)
+/// _WIN64                  Building on Windows 64 bit
 
 #if defined(__GNUC__ ) && (__GNUC__ < 9 || (__GNUC__ == 9 && __GNUC_MINOR__ <= 2)) && defined(_WIN32) && !defined(__clang__)
 #define ALIGNAS_ON_STACK_VARIABLES_BROKEN
@@ -68,12 +66,12 @@
 #  define IS_64BIT
 #endif
 
-#if defined(USE_POPCNT) && (defined(__INTEL_COMPILER) || defined(_MSC_VER))
-#  include <nmmintrin.h> // Intel and Microsoft header for _mm_popcnt_u64()
+#if defined(USE_POPCNT) && defined(_MSC_VER)
+#  include <nmmintrin.h> // Microsoft header for _mm_popcnt_u64()
 #endif
 
-#if !defined(NO_PREFETCH) && (defined(__INTEL_COMPILER) || defined(_MSC_VER))
-#  include <xmmintrin.h> // Intel and Microsoft header for _mm_prefetch()
+#if !defined(NO_PREFETCH) && defined(_MSC_VER)
+#  include <xmmintrin.h> // Microsoft header for _mm_prefetch()
 #endif
 
 #if defined(USE_PEXT)
@@ -153,17 +151,6 @@ enum CastlingRights {
   CASTLING_RIGHT_NB = 16
 };
 
-enum Phase {
-  MG = 0, EG = 1, PHASE_NB = 2
-};
-
-enum ScaleFactor {
-  SCALE_FACTOR_DRAW    = 0,
-  SCALE_FACTOR_NORMAL  = 64,
-  SCALE_FACTOR_MAX     = 128,
-  SCALE_FACTOR_NONE    = 255
-};
-
 enum Bound {
   BOUND_NONE,
   BOUND_UPPER,
@@ -174,7 +161,6 @@ enum Bound {
 enum Value : int {
   VALUE_ZERO      = 0,
   VALUE_DRAW      = 0,
-  VALUE_KNOWN_WIN = 10000,
   VALUE_MATE      = 32000,
   VALUE_INFINITE  = 32001,
   VALUE_NONE      = 32002,
@@ -185,13 +171,13 @@ enum Value : int {
   // In the code, we make the assumption that these values
   // are such that non_pawn_material() can be used to uniquely
   // identify the material on the board.
-  PawnValueMg   = 126,   PawnValueEg   = 208,
-  KnightValueMg = 781,   KnightValueEg = 854,
-  BishopValueMg = 825,   BishopValueEg = 915,
-  RookValueMg   = 1276,  RookValueEg   = 1380,
-  QueenValueMg  = 2538,  QueenValueEg  = 2682,
+  PawnValue   = 208,
+  KnightValue = 781,
+  BishopValue = 825,
+  RookValue   = 1276,
+  QueenValue  = 2538,
 
-  TraditionalPawnValue = (QueenValueEg / 9 + RookValueEg / 5 + BishopValueEg / 3 + KnightValueEg / 3) / 4,
+  TraditionalPawnValue = (QueenValue / 9 + RookValue / 5 + BishopValue / 3 + KnightValue / 3) / 4,
 
   VALUE_TB_WIN    = 101 * TraditionalPawnValue
 };
@@ -209,12 +195,8 @@ enum Piece {
   PIECE_NB = 16
 };
 
-constexpr Value PieceValue[PHASE_NB][PIECE_NB] = {
-  { VALUE_ZERO, PawnValueMg, KnightValueMg, BishopValueMg, RookValueMg, QueenValueMg, VALUE_ZERO, VALUE_ZERO,
-    VALUE_ZERO, PawnValueMg, KnightValueMg, BishopValueMg, RookValueMg, QueenValueMg, VALUE_ZERO, VALUE_ZERO },
-  { VALUE_ZERO, PawnValueEg, KnightValueEg, BishopValueEg, RookValueEg, QueenValueEg, VALUE_ZERO, VALUE_ZERO,
-    VALUE_ZERO, PawnValueEg, KnightValueEg, BishopValueEg, RookValueEg, QueenValueEg, VALUE_ZERO, VALUE_ZERO }
-};
+constexpr Value PieceValue[PIECE_NB] = { VALUE_ZERO, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, VALUE_ZERO, VALUE_ZERO,
+                                         VALUE_ZERO, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, VALUE_ZERO, VALUE_ZERO };
 
 using Depth = int;
 
@@ -302,7 +284,6 @@ inline T& operator/=(T& d, int i) { return d = T(int(d) / i); }
 ENABLE_FULL_OPERATORS_ON(Value)
 ENABLE_FULL_OPERATORS_ON(Direction)
 
-ENABLE_INCR_OPERATORS_ON(Piece)
 ENABLE_INCR_OPERATORS_ON(PieceType)
 ENABLE_INCR_OPERATORS_ON(Square)
 ENABLE_INCR_OPERATORS_ON(File)

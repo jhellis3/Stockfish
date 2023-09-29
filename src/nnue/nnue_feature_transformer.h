@@ -21,11 +21,18 @@
 #ifndef NNUE_FEATURE_TRANSFORMER_H_INCLUDED
 #define NNUE_FEATURE_TRANSFORMER_H_INCLUDED
 
-#include "nnue_common.h"
-#include "nnue_architecture.h"
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <cstring>
+#include <iosfwd>
+#include <utility>
 
-#include <cstring> // std::memset()
-#include <utility> // std::pair
+#include "../position.h"
+#include "../types.h"
+#include "nnue_accumulator.h"
+#include "nnue_architecture.h"
+#include "nnue_common.h"
 
 namespace Stockfish::Eval::NNUE {
 
@@ -62,7 +69,7 @@ namespace Stockfish::Eval::NNUE {
   #define vec_add_psqt_32(a,b) _mm256_add_epi32(a,b)
   #define vec_sub_psqt_32(a,b) _mm256_sub_epi32(a,b)
   #define vec_zero_psqt() _mm256_setzero_si256()
-  #define NumRegistersSIMD 32
+  #define NumRegistersSIMD 16
   #define MaxChunkSize 64
 
   #elif USE_AVX2
@@ -320,9 +327,9 @@ namespace Stockfish::Eval::NNUE {
           for (IndexType j = 0; j < HalfDimensions / 2; ++j) {
               BiasType sum0 = accumulation[static_cast<int>(perspectives[p])][j + 0];
               BiasType sum1 = accumulation[static_cast<int>(perspectives[p])][j + HalfDimensions / 2];
-              sum0 = std::max<int>(0, std::min<int>(127, sum0));
-              sum1 = std::max<int>(0, std::min<int>(127, sum1));
-              output[offset + j] = static_cast<OutputType>(sum0 * sum1 / 128);
+              sum0 = std::clamp<BiasType>(sum0, 0, 127);
+              sum1 = std::clamp<BiasType>(sum1, 0, 127);
+              output[offset + j] = static_cast<OutputType>(unsigned(sum0 * sum1) / 128);
           }
 
 #endif
