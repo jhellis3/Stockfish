@@ -242,10 +242,9 @@ void MainThread::search() {
 
 void Thread::search() {
 
-  // To allow access to (ss-7) up to (ss+2), the stack must be oversized.
-  // The former is needed to allow update_continuation_histories(ss-1, ...),
-  // which accesses its argument at ss-6, also near the root.
-  // The latter is needed for statScore and killer initialization.
+  // Allocate stack with extra size to allow access from (ss-7) to (ss+2)
+  // (ss-7) is needed for update_continuation_histories(ss-1, ...) which accesses (ss-6)
+  // (ss+2) is needed for initialization of statScore and killers
   Stack stack[MAX_PLY+10], *ss = stack+7;
   Move  pv[MAX_PLY+1];
   Value alpha, beta, delta;
@@ -667,7 +666,7 @@ namespace {
     {
     if (excludedMove)
     {
-        // Providing the hint that this node's accumulator will be used often brings significant Elo gain (13 Elo)
+        // Providing the hint that this node's accumulator will be used often brings significant Elo gain (~13 Elo)
         Eval::NNUE::hint_common_parent_position(pos);
         eval = ss->staticEval;
     }
@@ -715,7 +714,8 @@ namespace {
         && !thisThread->nmpGuardV
         &&  abs(eval) < VALUE_MAX_EVAL)
     {
-       // Step 8. Futility pruning: child node (~25 Elo)
+       // Step 8. Futility pruning: child node (~40 Elo)
+       // The depth condition is important for mate finding.
        if (    depth < 9 // was 8
            && !ss->ttPv
            && !kingDanger
@@ -726,7 +726,7 @@ namespace {
            &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving) - (ss-1)->statScore / 306 >= beta)
            return eval;
 
-       // Step 9. Null move search with verification search (~22 Elo)
+       // Step 9. Null move search with verification search (~35 Elo)
        if (   !thisThread->nmpGuard
            &&  (ss-1)->statScore < 17329
            && !gameCycle
@@ -1402,6 +1402,7 @@ namespace {
     Value bestValue, value, ttValue, futilityValue, futilityBase;
     bool pvHit, givesCheck, capture, gameCycle;
     int moveCount;
+    Color us = pos.side_to_move();
 
     // Step 1. Initialize node
     if (PvNode)
@@ -1534,7 +1535,8 @@ namespace {
 
         moveCount++;
 
-      if (bestValue > VALUE_MATED_IN_MAX_PLY)
+      // Step 6. Pruning.
+      if (bestValue > VALUE_MATED_IN_MAX_PLY && pos.non_pawn_material(us))
       {
          // Futility pruning and moveCount pruning (~10 Elo)
          if (   !givesCheck
