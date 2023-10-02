@@ -179,7 +179,8 @@ enum Value : int {
 
   TraditionalPawnValue = (QueenValue / 9 + RookValue / 5 + BishopValue / 3 + KnightValue / 3) / 4,
 
-  VALUE_TB_WIN    = 101 * TraditionalPawnValue
+  VALUE_TB_WIN    = 101 * TraditionalPawnValue,
+  VALUE_MAX_EVAL  = VALUE_TB_WIN - 8 * TraditionalPawnValue
 };
 
 enum PieceType {

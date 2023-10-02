@@ -580,7 +580,7 @@ namespace {
     if (  !PvNode
         && !excludedMove
         && !gameCycle
-        && (!ourMove || beta < VALUE_MATE_IN_MAX_PLY)
+        && (!ourMove || beta < VALUE_MAX_EVAL)
         && ttDepth > depth
         && ttValue != VALUE_NONE // Possible in case of TT access race or if !ttHit
         && (ttValue != VALUE_DRAW || VALUE_DRAW >= beta)
@@ -713,7 +713,7 @@ namespace {
     if (   !PvNode
         && (ourMove || !excludedMove)
         && !thisThread->nmpGuardV
-        &&  abs(eval) < VALUE_TB_WIN - 8 * TraditionalPawnValue)
+        &&  abs(eval) < VALUE_MAX_EVAL)
     {
        // Step 8. Futility pruning: child node (~25 Elo)
        if (    depth < 9 // was 8
@@ -721,7 +721,7 @@ namespace {
            && !kingDanger
            && !gameCycle
            && !(thisThread->nmpGuard && nullParity)
-           //&&  abs(alpha) < VALUE_KNOWN_WIN
+           &&  abs(alpha) < VALUE_MAX_EVAL
            &&  eval >= beta
            &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving) - (ss-1)->statScore / 306 >= beta)
            return eval;
@@ -858,8 +858,8 @@ namespace {
         && (ttBound & BOUND_LOWER)
         && ttDepth >= depth - 4
         && ttValue >= probCutBeta
-        && abs(ttValue) < VALUE_MATE_IN_MAX_PLY
-        && abs(beta) < VALUE_MATE_IN_MAX_PLY)
+        && abs(ttValue) < VALUE_MAX_EVAL
+        && abs(beta) < VALUE_MAX_EVAL)
         return probCutBeta;
 
     const PieceToHistory* contHist[] = { (ss-1)->continuationHistory, (ss-2)->continuationHistory,
@@ -907,7 +907,7 @@ namespace {
                       &&  ttValue != VALUE_NONE
                       && (ttBound & BOUND_LOWER)
                       &&  alpha > VALUE_MATED_IN_MAX_PLY + MAX_PLY
-                      &&  ttValue > -VALUE_TB_WIN / 2
+                      &&  ttValue > -VALUE_MAX_EVAL / 2
                       &&  ttDepth >= depth - 3
                       &&  depth >= 4 - (thisThread->completedDepth > 22) + 2 * (PvNode && tte->is_pv());
 
@@ -992,7 +992,6 @@ namespace {
 
       // Step 14. Pruning at shallow depth (~120 Elo). Depth conditions are important for mate finding.
       if (   doLMP
-          && (bestValue < VALUE_MATE_IN_MAX_PLY || !ourMove)
           && bestValue > VALUE_MATED_IN_MAX_PLY)
       {
           // Skip quiet moves if movecount exceeds our FutilityMoveCount threshold (~8 Elo)
@@ -1009,7 +1008,7 @@ namespace {
               // Futility pruning for captures (~2 Elo)
               if (   !givesCheck
                   //&& !PvNode
-                  &&  lmrDepth < 7 // was 3
+                  &&  lmrDepth < 6 // was 3
                   && !ss->inCheck
                   && ss->staticEval + 197 + 248 * lmrDepth + PieceValue[pos.piece_on(to_sq(move))]
                    + captureHistory[movedPiece][to_sq(move)][type_of(pos.piece_on(to_sq(move)))] / 7 < alpha)
@@ -1037,7 +1036,7 @@ namespace {
 
               // Futility pruning: parent node (~13 Elo)
               if (   !ss->inCheck
-                  && lmrDepth < 12 // was 8
+                  && lmrDepth < (6 * (1 + !ourMove)) // was 8
                   && history < 20500 - 3875 * (depth - 1)
                   //&& (!ourMove || !(ss-1)->secondaryLine)
                   && ss->staticEval + 112 + 138 * lmrDepth <= alpha)
@@ -1305,8 +1304,8 @@ namespace {
                   if (   depth > 2
                       && depth < 12
                       && !gameCycle
-                      && beta  <  VALUE_TB_WIN - 8 * TraditionalPawnValue
-                      && alpha > -VALUE_TB_WIN + 8 * TraditionalPawnValue)
+                      && beta  <  VALUE_MAX_EVAL
+                      && alpha > -VALUE_MAX_EVAL)
                       depth -= 1;
 
                   assert(depth > 0);
@@ -1458,7 +1457,7 @@ namespace {
     if (  !PvNode
         && ss->ttHit
         && !gameCycle
-        && ((ss->ply & 1) || beta < VALUE_MATE_IN_MAX_PLY)
+        && ((ss->ply & 1) || beta < VALUE_MAX_EVAL)
         && tte->depth() >= ttDepth
         && ttValue != VALUE_NONE // Only in case of TT access race or if !ttHit
         && (ttValue != VALUE_DRAW || VALUE_DRAW >= beta)
@@ -1540,7 +1539,7 @@ namespace {
          // Futility pruning and moveCount pruning (~10 Elo)
          if (   !givesCheck
              &&  to_sq(move) != prevSq
-             &&  futilityBase > -VALUE_TB_WIN + 8 * TraditionalPawnValue
+             &&  futilityBase > -VALUE_MAX_EVAL
              &&  type_of(move) != PROMOTION)
          {
              if (moveCount > 2 + PvNode)
@@ -1561,14 +1560,6 @@ namespace {
              if (futilityBase <= alpha && !pos.see_ge(move, VALUE_ZERO + 1))
              {
                  bestValue = std::max(bestValue, futilityBase);
-                 continue;
-             }
-
-             // If static exchange evaluation is much worse than what is needed to not
-             // fall below alpha we can prune this move
-             if (futilityBase > alpha && !pos.see_ge(move, (alpha - futilityBase) * 4))
-             {
-                 bestValue = alpha;
                  continue;
              }
          }
