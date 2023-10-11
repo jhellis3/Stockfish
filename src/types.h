@@ -105,7 +105,7 @@ using Key = uint64_t;
 using Bitboard = uint64_t;
 
 constexpr int MAX_MOVES = 256;
-constexpr int MAX_PLY   = 245;
+constexpr int MAX_PLY   = 440;
 
 /// A move needs 16 bits to be stored
 ///
