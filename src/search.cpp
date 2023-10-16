@@ -791,7 +791,7 @@ namespace {
        // If we have a good enough capture and a reduced search returns a value
        // much above beta, we can (almost) safely prune the previous move.
        if (    depth > 4
-           &&  abs(beta) < VALUE_MATE_IN_MAX_PLY
+           &&  abs(beta) < VALUE_MAX_EVAL
            && (ttCapture || !ttMove)
            // If we don't have a ttHit or our ttDepth is not greater our
            // reduced depth search, continue with the probcut.
@@ -914,7 +914,7 @@ namespace {
                       && !excludedMove // Avoid recursive singular search
                       &&  ttValue != VALUE_NONE
                       && (ttBound & BOUND_LOWER)
-                      &&  alpha > VALUE_MATED_IN_MAX_PLY + MAX_PLY
+                      &&  alpha > -VALUE_MAX_EVAL
                       &&  ttValue > -VALUE_MAX_EVAL / 2
                       &&  ttDepth >= depth - 3
                       &&  depth >= 4 - (thisThread->completedDepth > 24) + 2 * (PvNode && tte->is_pv());
@@ -979,7 +979,7 @@ namespace {
                                                                     [to_sq(move)];
           value = mate_in(ss->ply+1);
 
-          if (PvNode && (moveCount == 1 || (value > alpha && (rootNode || value < beta))))
+          if (PvNode && (moveCount == 1 || value > alpha))
           {
               (ss+1)->pv = pv;
               (ss+1)->pv[0] = MOVE_NONE;
@@ -1065,7 +1065,7 @@ namespace {
       if (    doSingular
           &&  move == ttMove)
       {
-          Value singularBeta = std::max(ttValue - (64 + 57 * (ss->ttPv && !PvNode)) * depth / 64, VALUE_MATED_IN_MAX_PLY);
+          Value singularBeta = std::max(ttValue - (64 + 57 * (ss->ttPv && !PvNode)) * depth / 64, -VALUE_MAX_EVAL);
           Depth singularDepth = (depth - 1) / 2;
 
           ss->excludedMove = move;
@@ -1079,7 +1079,7 @@ namespace {
               // Avoid search explosion by limiting the number of double extensions
               if (  !PvNode
                   && value < singularBeta - 18
-                  && ss->doubleExtensions < 4)
+                  && ss->doubleExtensions < 12) // watch for search explosion
               {
                   extension = 2;
                   depth += depth < 15;
@@ -1096,11 +1096,11 @@ namespace {
           else if (!PvNode)
           {
             if (ttValue >= beta)
-                return ttValue; // beta safer?
+                return ttValue;
 
             // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
             // Add ttValue <= value?
-            else if (!gameCycle && alpha < VALUE_MATE_IN_MAX_PLY - MAX_PLY)
+            else if (!gameCycle && alpha < VALUE_MAX_EVAL)
                 extension = (cutNode && (ss-1)->moveCount > 1 && !(ss-1)->secondaryLine && depth < 19) ? -2 : -1;
           }
       }
@@ -1109,7 +1109,7 @@ namespace {
       {
         // Check extensions (~1 Elo)
         if (   givesCheck
-            && depth > 9)
+            && depth > 7)
             extension = 1;
 
         // Quiet ttMove extensions (~1 Elo)
