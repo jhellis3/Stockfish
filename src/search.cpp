@@ -1522,10 +1522,6 @@ namespace {
     {
         assert(is_ok(move));
 
-        // Check for legality
-        if (!pos.legal(move))
-            continue;
-
         givesCheck = pos.gives_check(move);
         capture = pos.capture_stage(move);
 
