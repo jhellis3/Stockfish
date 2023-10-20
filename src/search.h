@@ -51,6 +51,7 @@ struct Stack {
   bool ttPv;
   bool ttHit;
   bool secondaryLine;
+  bool mainLine;
   int doubleExtensions;
   int cutoffCnt;
 };

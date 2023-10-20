@@ -500,6 +500,7 @@ namespace {
     ourMove             = !(ss->ply & 1);
     nullParity          = (ourMove == thisThread->nmpSide);
     ss->secondaryLine   = false;
+    ss->mainLine        = false;
 
     // Check for the available remaining time
     if (thisThread == Threads.main())
@@ -536,17 +537,7 @@ namespace {
         if (pos.has_game_cycle(ss->ply))
         {
             if (VALUE_DRAW >= beta)
-            {
-                if (!excludedMove)
-                    tte->save(posKey, VALUE_DRAW, ss->ttPv, BOUND_LOWER,
-                              depth-4, MOVE_NONE, VALUE_NONE);
-
                 return VALUE_DRAW;
-            }
-
-            if (!excludedMove)
-                tte->save(posKey, VALUE_DRAW, ss->ttPv, BOUND_UPPER,
-                          depth-4, MOVE_NONE, VALUE_NONE);
 
             gameCycle = true;
             alpha = std::max(alpha, VALUE_DRAW);
@@ -587,7 +578,6 @@ namespace {
         && !gameCycle
         && ttDepth > depth
         && ttValue != VALUE_NONE // Possible in case of TT access race or if !ttHit
-        && (ttValue != VALUE_DRAW || VALUE_DRAW >= beta)
         && (ttBound & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
     {
         // If ttMove is quiet, update move sorting heuristics on TT hit (~2 Elo)
@@ -963,6 +953,10 @@ namespace {
                            || (!ourMove && (ss-1)->secondaryLine && !excludedMove && moveCount == 1)
                            || ( ourMove && (ss-1)->secondaryLine));
 
+      ss->mainLine = (   (rootNode && moveCount == 1)
+                      || (!ourMove && (ss-1)->mainLine)
+                      || ( ourMove && (ss-1)->mainLine && moveCount == 1 && !excludedMove));
+
       if (givesCheck)
       {
           pos.do_move(move, st, givesCheck);
@@ -1062,7 +1056,15 @@ namespace {
       // that depth margin and singularBeta margin are known for having non-linear
       // scaling. Their values are optimized to time controls of 180+1.8 and longer
       // so changing them requires tests at this type of time controls.
-      if (    doSingular
+
+      if (   gameCycle
+          && (   PvNode
+              || (ss-1)->mainLine
+              || ( ourMove && (ss-1)->secondaryLine && beta  < VALUE_DRAW)
+              || (!ourMove && (ss-1)->secondaryLine && alpha > VALUE_DRAW)))
+          extension = 2;
+
+      else if (    doSingular
           &&  move == ttMove)
       {
           Value singularBeta = std::max(ttValue - (64 + 57 * (ss->ttPv && !PvNode)) * depth / 64, -VALUE_MAX_EVAL);
@@ -1207,9 +1209,6 @@ namespace {
       {
           (ss+1)->pv = pv;
           (ss+1)->pv[0] = MOVE_NONE;
-
-          if (gameCycle && (ss-1)->moveCount < 2)
-              newDepth += 2;
 
           value = -search<PV>(pos, ss+1, -beta, -alpha, newDepth, false);
       }
@@ -1457,7 +1456,6 @@ namespace {
         && !gameCycle
         && tte->depth() >= ttDepth
         && ttValue != VALUE_NONE // Only in case of TT access race or if !ttHit
-        && (ttValue != VALUE_DRAW || VALUE_DRAW >= beta)
         && (ttBound & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
         return ttValue;
 
