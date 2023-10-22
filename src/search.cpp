@@ -724,15 +724,14 @@ namespace {
            &&  abs(alpha) < VALUE_MAX_EVAL
            &&  eval >= beta
            &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving) - (ss-1)->statScore / 321 >= beta
-           && !(  !ttCapture
-                && ttMove))
+           && (!ttMove || ttCapture || depth < 6))
            return eval;
 
        // Step 9. Null move search with verification search (~35 Elo)
        if (   !thisThread->nmpGuard
            &&  (ss-1)->statScore < 17257
            && !gameCycle
-           //&&  beta < VALUE_MATE_IN_MAX_PLY Implied by eval >= beta & abs(eval) < 2 * VALUE_KNOWN_WIN
+           //&&  beta < VALUE_MATE_IN_MAX_PLY Implied by eval >= beta & abs(eval) < VALUE_MAX_EVAL
            &&  eval >= beta
            &&  eval >= ss->staticEval
            &&  ss->staticEval >= beta - 24 * depth + 281
