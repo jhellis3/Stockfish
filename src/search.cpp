@@ -1067,8 +1067,7 @@ namespace {
       if (   gameCycle
           && (   PvNode
               || (ss-1)->mainLine
-              || ( ourMove && (ss-1)->secondaryLine && beta  < VALUE_DRAW)
-              || (!ourMove && (ss-1)->secondaryLine && alpha > VALUE_DRAW)))
+              || ((ss-1)->secondaryLine && thisThread->pvValue < VALUE_DRAW)))
           extension = 2;
 
       else if (    doSingular
