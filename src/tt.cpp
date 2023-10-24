@@ -31,133 +31,130 @@
 
 namespace Stockfish {
 
-TranspositionTable TT; // Our global transposition table
+TranspositionTable TT;  // Our global transposition table
 
-// TTEntry::save() populates the TTEntry with a new node's data, possibly
+// Populates the TTEntry with a new node's data, possibly
 // overwriting an old position. The update is not atomic and can be racy.
-
 void TTEntry::save(Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev) {
 
-  // Preserve any existing move for the same position
-  if (m || k != key)
-      move16 = uint16_t(m);
+    // Preserve any existing move for the same position
+    if (m || k != key)
+        move16 = uint16_t(m);
 
-  // Overwrite less valuable entries (cheapest checks first)
-  if (   b == BOUND_EXACT
-      || k != key
-      || d - DEPTH_OFFSET + 3 * pv >= depth8)
-  {
-      assert(d > DEPTH_OFFSET);
-      assert(d <= MAX_PLY);
+    // Overwrite less valuable entries (cheapest checks first)
+    if (   b == BOUND_EXACT
+        || k != key
+        || d - DEPTH_OFFSET + 3 * pv >= depth8)
+    {
+        assert(d > DEPTH_OFFSET);
+        assert(d <= MAX_PLY);
 
-      key       = k;
-      depth8    = uint8_t(std::min(255, d - DEPTH_OFFSET));
-      genBound8 = uint8_t(TT.generation8 | uint8_t(pv) << 2 | b);
-      value16   = int16_t(v);
-      eval16    = int16_t(ev);
-  }
+        key       = k;
+        depth8    = uint8_t(std::min(255, d - DEPTH_OFFSET));
+        genBound8 = uint8_t(TT.generation8 | uint8_t(pv) << 2 | b);
+        value16   = int16_t(v);
+        eval16    = int16_t(ev);
+    }
 }
 
 
-// TranspositionTable::resize() sets the size of the transposition table,
+// Sets the size of the transposition table,
 // measured in megabytes. Transposition table consists of a power of 2 number
 // of clusters and each cluster consists of ClusterSize number of TTEntry.
-
 void TranspositionTable::resize(size_t mbSize) {
 
-  Threads.main()->wait_for_search_finished();
+    Threads.main()->wait_for_search_finished();
 
-  aligned_large_pages_free(table);
+    aligned_large_pages_free(table);
 
-  clusterCount = mbSize * 1024 * 1024 / sizeof(Cluster);
+    clusterCount = mbSize * 1024 * 1024 / sizeof(Cluster);
 
-  table = static_cast<Cluster*>(aligned_large_pages_alloc(clusterCount * sizeof(Cluster)));
-  if (!table)
-  {
-      std::cerr << "Failed to allocate " << mbSize
-                << "MB for transposition table." << std::endl;
-      exit(EXIT_FAILURE);
-  }
+    table = static_cast<Cluster*>(aligned_large_pages_alloc(clusterCount * sizeof(Cluster)));
+    if (!table)
+    {
+        std::cerr << "Failed to allocate " << mbSize << "MB for transposition table." << std::endl;
+        exit(EXIT_FAILURE);
+    }
 
-  clear();
+    clear();
 }
 
 
-// TranspositionTable::clear() initializes the entire transposition table to zero,
-//  in a multi-threaded way.
-
+// Initializes the entire transposition table to zero,
+// in a multi-threaded way.
 void TranspositionTable::clear() {
 
-  std::vector<std::thread> threads;
+    std::vector<std::thread> threads;
 
-  for (size_t idx = 0; idx < size_t(Options["Threads"]); ++idx)
-  {
-      threads.emplace_back([this, idx]() {
+    for (size_t idx = 0; idx < size_t(Options["Threads"]); ++idx)
+    {
+        threads.emplace_back([this, idx]() {
+            // Thread binding gives faster search on systems with a first-touch policy
+            if (Options["Threads"] > 8)
+                WinProcGroup::bindThisThread(idx);
 
-          // Thread binding gives faster search on systems with a first-touch policy
-          if (Options["Threads"] > 8)
-              WinProcGroup::bindThisThread(idx);
+            // Each thread will zero its part of the hash table
+            const size_t stride = size_t(clusterCount / Options["Threads"]),
+                         start  = size_t(stride * idx),
+                         len =
+                           idx != size_t(Options["Threads"]) - 1 ? stride : clusterCount - start;
 
-          // Each thread will zero its part of the hash table
-          const size_t stride = size_t(clusterCount / Options["Threads"]),
-                       start  = size_t(stride * idx),
-                       len    = idx != size_t(Options["Threads"]) - 1 ?
-                                stride : clusterCount - start;
+            std::memset(&table[start], 0, len * sizeof(Cluster));
+        });
+    }
 
-          std::memset(&table[start], 0, len * sizeof(Cluster));
-      });
-  }
-
-  for (std::thread& th : threads)
-      th.join();
+    for (std::thread& th : threads)
+        th.join();
 }
 
 
-// TranspositionTable::probe() looks up the current position in the transposition
+// Looks up the current position in the transposition
 // table. It returns true and a pointer to the TTEntry if the position is found.
 // Otherwise, it returns false and a pointer to an empty or least valuable TTEntry
 // to be replaced later. The replace value of an entry is calculated as its depth
 // minus 8 times its relative age. TTEntry t1 is considered more valuable than
 // TTEntry t2 if its replace value is greater than that of t2.
-
 TTEntry* TranspositionTable::probe(const Key key, bool& found) const {
 
-  TTEntry* const tte = first_entry(key);
-  for (int i = 0; i < ClusterSize; ++i)
-      if (tte[i].key == key || !tte[i].depth8)
-      {
-          tte[i].genBound8 = uint8_t(generation8 | (tte[i].genBound8 & (GENERATION_DELTA - 1))); // Refresh
+    TTEntry* const tte = first_entry(key);
+    for (int i = 0; i < ClusterSize; ++i)
+        if (tte[i].key == key || !tte[i].depth8)
+        {
+            tte[i].genBound8 = uint8_t(generation8 | (tte[i].genBound8 & (GENERATION_DELTA - 1))); // Refresh
 
-          return found = bool(tte[i].depth8), &tte[i];
-      }
+            return found = bool(tte[i].depth8), &tte[i];
+        }
 
-  // Find an entry to be replaced according to the replacement strategy
-  TTEntry* replace = tte;
-  for (int i = 1; i < ClusterSize; ++i)
-      // Due to our packed storage format for generation and its cyclic
-      // nature we add GENERATION_CYCLE (256 is the modulus, plus what
-      // is needed to keep the unrelated lowest n bits from affecting
-      // the result) to calculate the entry age correctly even after
-      // generation8 overflows into the next cycle.
-      if (  replace->depth8 - ((GENERATION_CYCLE + generation8 - replace->genBound8) & GENERATION_MASK)
-          >   tte[i].depth8 - ((GENERATION_CYCLE + generation8 -   tte[i].genBound8) & GENERATION_MASK))
-          replace = &tte[i];
+    // Find an entry to be replaced according to the replacement strategy
+    TTEntry* replace = tte;
+    for (int i = 1; i < ClusterSize; ++i)
+        // Due to our packed storage format for generation and its cyclic
+        // nature we add GENERATION_CYCLE (256 is the modulus, plus what
+        // is needed to keep the unrelated lowest n bits from affecting
+        // the result) to calculate the entry age correctly even after
+        // generation8 overflows into the next cycle.
+        if (replace->depth8
+              - ((GENERATION_CYCLE + generation8 - replace->genBound8) & GENERATION_MASK)
+            > tte[i].depth8
+                - ((GENERATION_CYCLE + generation8 - tte[i].genBound8) & GENERATION_MASK))
+            replace = &tte[i];
 
-  return found = false, replace;
+    return found = false, replace;
 }
 
 
-// TranspositionTable::hashfull() returns an approximation of the hashtable
+// Returns an approximation of the hashtable
 // occupation during a search. The hash is x permill full, as per UCI protocol.
 
 int TranspositionTable::hashfull() const {
 
-  int cnt = 0;
-  for (int i = 0; i < 1000; ++i)
-      for (int j = 0; j < ClusterSize; ++j)
-          cnt += table[i].entry[j].depth8 && (table[i].entry[j].genBound8 & GENERATION_MASK) == generation8;
+    int cnt = 0;
+    for (int i = 0; i < 1000; ++i)
+        for (int j = 0; j < ClusterSize; ++j)
+            cnt += table[i].entry[j].depth8
+                && (table[i].entry[j].genBound8 & GENERATION_MASK) == generation8;
 
-  return cnt / ClusterSize;
+    return cnt / ClusterSize;
 }
 
-} // namespace Stockfish
+}  // namespace Stockfish
