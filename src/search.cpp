@@ -249,9 +249,9 @@ void MainThread::search() {
 // consumed, the user stops the search, or the maximum search depth is reached.
 void Thread::search() {
 
-    // Allocate stack with extra size to allow access from (ss-7) to (ss+2):
-    // (ss-7) is needed for update_continuation_histories(ss-1) which accesses (ss-6),
-    // (ss+2) is needed for initialization of statScore and killers.
+    // Allocate stack with extra size to allow access from (ss - 7) to (ss + 2):
+    // (ss - 7) is needed for update_continuation_histories(ss - 1) which accesses (ss - 6),
+    // (ss + 2) is needed for initialization of cutOffCnt and killers.
     Stack       stack[MAX_PLY + 10], *ss = stack + 7;
     Move        pv[MAX_PLY + 1];
     Value       alpha, beta, delta;
@@ -321,9 +321,9 @@ void Thread::search() {
             selDepth = 0;
 
             // Reset aspiration window starting size
-            Value prev = rootMoves[pvIdx].averageScore;
+            Value prev   = rootMoves[pvIdx].averageScore;
             int momentum = int(prev) * prev / 17470;
-            delta = Value(10);
+            delta        = Value(10);
 
             if (prev > VALUE_MATE_IN_MAX_PLY)
                 alpha = VALUE_MATE_IN_MAX_PLY - MAX_PLY;
@@ -554,7 +554,7 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
                                                       : VALUE_DRAW;
 
         // Step 3. Mate distance pruning. Even if we mate at the next move our score
-        // would be at best mate_in(ss->ply+1), but if alpha is already bigger because
+        // would be at best mate_in(ss->ply + 1), but if alpha is already bigger because
         // a shorter mate was found upward in the tree then there is no need to search
         // because we will never beat the current alpha. Same logic but with reversed
         // signs applies also in the opposite condition of being mated instead of giving
@@ -591,7 +591,8 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
                 if (!ttCapture)
                     update_quiet_stats(pos, ss, ttMove, stat_bonus(depth));
 
-                // Extra penalty for early quiet moves of the previous ply (~0 Elo on STC, ~2 Elo on LTC)
+                // Extra penalty for early quiet moves of
+                // the previous ply (~0 Elo on STC, ~2 Elo on LTC).
                 if (prevSq != SQ_NONE && (ss - 1)->moveCount <= 2 && !priorCapture)
                     update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq,
                                                   -stat_bonus(depth + 1));
@@ -664,7 +665,8 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
     {
     if (excludedMove)
     {
-        // Providing the hint that this node's accumulator will be used often brings significant Elo gain (~13 Elo)
+        // Providing the hint that this node's accumulator will be used often
+        // brings significant Elo gain (~13 Elo).
         Eval::NNUE::hint_common_parent_position(pos);
         eval = ss->staticEval;
     }
@@ -1008,13 +1010,15 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
                 || givesCheck)
             {
                 // Futility pruning for captures (~2 Elo)
-                if (   !givesCheck
-                    //&& !PvNode
-                    &&  lmrDepth < 6
-                    && !ss->inCheck
-                    && ss->staticEval + 188 + 206 * lmrDepth + PieceValue[pos.piece_on(to_sq(move))]
-                    + captureHistory[movedPiece][to_sq(move)][type_of(pos.piece_on(to_sq(move)))] / 7 < alpha)
-                    continue;
+                if (!givesCheck && lmrDepth < 6 && !ss->inCheck)
+                {
+                    Piece capturedPiece = pos.piece_on(to_sq(move));
+                    int   futilityEval =
+                      ss->staticEval + 239 + 291 * lmrDepth + PieceValue[capturedPiece]
+                      + captureHistory[movedPiece][to_sq(move)][type_of(capturedPiece)] / 7;
+                    if (futilityEval < alpha)
+                        continue;
+                }
 
                 // SEE based pruning for captures and checks (~11 Elo)
                 if (!pos.see_ge(move, Value(-185) * depth))
@@ -1027,19 +1031,19 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
                             + (*contHist[3])[movedPiece][to_sq(move)];
 
                 // Continuation history based pruning (~2 Elo)
-                if (lmrDepth < 6 && history < -3232 * depth)
+                if (lmrDepth < 6 && history < -3498 * depth)
                     continue;
 
                 history += 2 * thisThread->mainHistory[us][from_to(move)];
 
-                lmrDepth += history / 5793;
+                lmrDepth += history / 7815;
                 lmrDepth = std::max(lmrDepth, -2);
 
                 // Futility pruning: parent node (~13 Elo)
                 if (   !ss->inCheck
                     && lmrDepth < (6 * (1 + !ourMove))
                     && history < 20500 - 3875 * (depth - 1)
-                    && ss->staticEval + 115 + 122 * lmrDepth <= alpha)
+                    && ss->staticEval + 80 + 122 * lmrDepth <= alpha)
                     continue;
 
                 lmrDepth = std::max(lmrDepth, 0);
@@ -1052,6 +1056,12 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
         }
 
         // Step 15. Extensions (~100 Elo)
+        if (   gameCycle
+            && (   PvNode
+                || (ss-1)->mainLine
+                || ((ss-1)->secondaryLine && thisThread->pvValue < VALUE_DRAW)))
+            extension = 2;
+
         // Singular extension search (~94 Elo). If all moves but one fail low on a
         // search of (alpha-s, beta-s), and just one fails high on (alpha, beta),
         // then that move is singular and should be extended. To verify this we do
@@ -1060,13 +1070,7 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
         // that depth margin and singularBeta margin are known for having non-linear
         // scaling. Their values are optimized to time controls of 180+1.8 and longer
         // so changing them requires tests at this type of time controls.
-
-        if (   gameCycle
-            && (   PvNode
-                || (ss-1)->mainLine
-                || ((ss-1)->secondaryLine && thisThread->pvValue < VALUE_DRAW)))
-            extension = 2;
-
+        // Recursive singular search is avoided.
         else if (    doSingular
                  &&  move == ttMove)
         {
