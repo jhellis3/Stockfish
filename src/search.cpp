@@ -712,7 +712,9 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
     if (   !PvNode
         && (ourMove || !excludedMove)
         && !thisThread->nmpGuardV
-        &&  abs(eval) < VALUE_MAX_EVAL)
+        &&  abs(eval) < VALUE_MAX_EVAL
+        &&  abs(beta) < VALUE_MAX_EVAL
+        &&  eval >= beta)
     {
        // Step 8. Futility pruning: child node (~40 Elo)
        // The depth condition is important for mate finding.
@@ -722,8 +724,6 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
            && !kingDanger
            && !gameCycle
            && !(thisThread->nmpGuard && nullParity)
-           &&  abs(alpha) < VALUE_MAX_EVAL
-           &&  eval >= beta
            &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving) - (ss-1)->statScore / 321 >= beta)
            return eval;
 
@@ -731,8 +731,6 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
        if (   !thisThread->nmpGuard
            &&  (ss-1)->statScore < 17257
            && !gameCycle
-           //&&  beta < VALUE_MATE_IN_MAX_PLY Implied by eval >= beta & abs(eval) < VALUE_MAX_EVAL
-           &&  eval >= beta
            &&  eval >= ss->staticEval
            &&  ss->staticEval >= beta - 24 * depth + 281
            &&  pos.non_pawn_material(us)
@@ -784,7 +782,6 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
        // If we have a good enough capture and a reduced search returns a value
        // much above beta, we can (almost) safely prune the previous move.
        if (    depth > 4
-           &&  abs(beta) < VALUE_MAX_EVAL
            && (ttCapture || !ttMove)
            // If we don't have a ttHit or our ttDepth is not greater our
            // reduced depth search, continue with the probcut.
@@ -832,7 +829,7 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
        }
     } // End early Pruning
 
-    // Step 11. If the position is not in TT, decrease depth by 2 or 1 depending on node type (~3 Elo)
+    // Step 11. If the position is not in TT, decrease depth by 2 (~3 Elo)
     if (   PvNode
         && depth >= 3
         && !gameCycle
@@ -840,10 +837,10 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
         && (ss-1)->moveCount > 1)
         depth -= 2;
 
-    if (    cutNode
-        && !(ss-1)->secondaryLine
-        &&  depth >= 8
-        && !ttMove)
+    else if (    cutNode
+             && !(ss-1)->secondaryLine
+             &&  depth >= 8
+             && !ttMove)
         depth -= 2;
 
     } // In check search starts here
