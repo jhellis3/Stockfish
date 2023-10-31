@@ -716,15 +716,15 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
     {
        // Step 8. Futility pruning: child node (~40 Elo)
        // The depth condition is important for mate finding.
-       if (    depth < 9 // was 8
+       if (    depth < (8 + 2 * (ttCapture && !(ss-1)->mainLine && !(ss-1)->secondaryLine)
+                          - 3 * ((ss-1)->mainLine || (ss-1)->secondaryLine || (ttMove && !ttCapture)))
            && !ss->ttPv
            && !kingDanger
            && !gameCycle
            && !(thisThread->nmpGuard && nullParity)
            &&  abs(alpha) < VALUE_MAX_EVAL
            &&  eval >= beta
-           &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving) - (ss-1)->statScore / 321 >= beta
-           && (!ttMove || ttCapture || depth < 6))
+           &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving) - (ss-1)->statScore / 321 >= beta)
            return eval;
 
        // Step 9. Null move search with verification search (~35 Elo)
