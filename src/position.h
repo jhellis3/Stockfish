@@ -39,6 +39,7 @@ struct StateInfo {
 
     // Copied when making a move
     Key    materialKey;
+    Key    pawnKey;
     Value  nonPawnMaterial[COLOR_NB];
     int    castlingRights;
     int    rule50;
@@ -147,6 +148,7 @@ class Position {
     Key key() const;
     Key key_after(Move m) const;
     Key material_key() const;
+    Key pawn_key() const;
 
     // Other properties of the position
     Color side_to_move() const;
@@ -295,6 +297,8 @@ inline Key Position::key() const {
                          : st->rule50 < 86 ? st->key ^ make_key((st->rule50 - 14) / 8)
                                            : st->key ^ make_key(st->rule50);
 }
+
+inline Key Position::pawn_key() const { return st->pawnKey; }
 
 inline Key Position::material_key() const { return st->materialKey; }
 
