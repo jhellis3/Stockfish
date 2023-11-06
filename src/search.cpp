@@ -489,7 +489,7 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
     Value   bestValue, value, ttValue, eval, probCutBeta;
     bool    givesCheck, improving, priorCapture, isMate, gameCycle;
     bool    capture, moveCountPruning,
-            ttCapture, kingDanger, ourMove, nullParity, singularQuietLMR;
+            ttCapture, kingDanger, ourMove, nullParity;
     Piece   movedPiece;
     int     moveCount, captureCount, quietCount, rootDepth;
 
@@ -885,7 +885,7 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
                   thisThread->pawnHistory, countermove, ss->killers);
 
     value            = bestValue;
-    moveCountPruning = singularQuietLMR = false;
+    moveCountPruning = false;
 
     // Indicate PvNodes that will probably fail low if the node was searched
     // at a depth equal to or greater than the current depth, and the result
@@ -1093,7 +1093,6 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
 
             if (value < singularBeta)
             {
-                singularQuietLMR = !ttCapture;
                 // Avoid search explosion by limiting the number of double extensions
                 if (  !PvNode
                     && value < singularBeta - 18
@@ -1167,7 +1166,6 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
         else
             r =     r
                   + lmrAdjustment
-                  - (singularQuietLMR && moveCount == 1)
                   - ss->statScore / (10216 + 3855 * (depth > 5 && depth < 23));
 
         // Step 17. Late moves reduction / extension (LMR, ~117 Elo)
