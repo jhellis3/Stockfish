@@ -794,7 +794,7 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
        {
            assert(probCutBeta < VALUE_INFINITE);
            MovePicker mp(pos, ttMove, KnightValue - BishopValue + PieceValue[type_of(pos.captured_piece())],
-                         &captureHistory, thisThread->pawnHistory);
+                         &captureHistory);
 
            while ((move = mp.next_move()) != MOVE_NONE)
                if (move != excludedMove)
@@ -882,7 +882,7 @@ Value search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, boo
       prevSq != SQ_NONE ? thisThread->counterMoves[pos.piece_on(prevSq)][prevSq] : MOVE_NONE;
 
     MovePicker mp(pos, ttMove, depth, &thisThread->mainHistory, &captureHistory, contHist,
-                  thisThread->pawnHistory, countermove, ss->killers);
+                  &thisThread->pawnHistory, countermove, ss->killers);
 
     value            = bestValue;
     moveCountPruning = false;
@@ -1512,7 +1512,7 @@ Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth) {
     // will be generated.
     Square     prevSq = is_ok((ss - 1)->currentMove) ? to_sq((ss - 1)->currentMove) : SQ_NONE;
     MovePicker mp(pos, ttMove, depth, &thisThread->mainHistory, &thisThread->captureHistory,
-                  contHist, thisThread->pawnHistory, prevSq);
+                  contHist, &thisThread->pawnHistory, prevSq);
 
     int quietCheckEvasions = 0;
 

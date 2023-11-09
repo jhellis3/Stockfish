@@ -116,7 +116,6 @@ class Position {
     Bitboard blockers_for_king(Color c) const;
     Bitboard check_squares(PieceType pt) const;
     Bitboard pinners(Color c) const;
-    bool is_discovered_check_on_king(Color c, Move m) const;
 
     // Attacks to/from a given square
     Bitboard attackers_to(Square s) const;
@@ -287,10 +286,6 @@ inline Bitboard Position::blockers_for_king(Color c) const { return st->blockers
 inline Bitboard Position::pinners(Color c) const { return st->pinners[c]; }
 
 inline Bitboard Position::check_squares(PieceType pt) const { return st->checkSquares[pt]; }
-
-inline bool Position::is_discovered_check_on_king(Color c, Move m) const {
-  return st->blockersForKing[c] & from_sq(m);
-}
 
 inline Key Position::key() const {
   return st->rule50 < 14 ? st->key
