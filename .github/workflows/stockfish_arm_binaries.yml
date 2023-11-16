@@ -148,7 +148,7 @@ jobs:
         id: check_commits
         run: |
           git fetch
-          CHANGES=$(git rev-list HEAD..origin/master --count)
+          CHANGES=$(git rev-list HEAD..origin/crystal --count)
           echo "CHANGES=$CHANGES" >> $GITHUB_ENV
 
       - name: Prerelease
