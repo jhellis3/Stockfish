@@ -161,7 +161,7 @@ std::string engine_info(bool to_uci) {
     std::stringstream ss;
     ss << "Crystal " << version << std::setfill('0');
 
-    if constexpr (version == "7 CMB")
+    if constexpr (version == "dev")
     {
         ss << "-";
 #ifdef GIT_DATE

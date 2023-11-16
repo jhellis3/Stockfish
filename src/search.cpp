@@ -29,7 +29,6 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <utility>
 
 #include "bitboard.h"
 #include "evaluate.h"

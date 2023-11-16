@@ -19,7 +19,6 @@
 #include "position.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cassert>
 #include <cctype>
 #include <cstddef>
@@ -36,7 +35,6 @@
 #include "movegen.h"
 #include "nnue/nnue_common.h"
 #include "syzygy/tbprobe.h"
-#include "thread.h"
 #include "tt.h"
 #include "uci.h"
 

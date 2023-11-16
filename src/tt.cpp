@@ -18,6 +18,7 @@
 
 #include "tt.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
