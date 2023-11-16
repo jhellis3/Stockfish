@@ -21,17 +21,9 @@ jobs:
             emu: qemu-aarch64
             comp: ndk
             shell: bash
-          - name: Android NDK arm
-            os: ubuntu-22.04
-            compiler: armv7a-linux-androideabi21-clang++
-            emu: qemu-arm
-            comp: ndk
-            shell: bash
         binaries:
           - armv8-dotprod
           - armv8
-          - armv7
-          - armv7-neon
         exclude:
           - binaries: armv8-dotprod
             config: {compiler: armv7a-linux-androideabi21-clang++}

@@ -4,14 +4,10 @@ on:
     tags:
       - '*'
     branches:
-      - master
       - crystal
-      - tools
-      - github_ci
   pull_request:
     branches:
-      - master
-      - tools
+      - crystal
 jobs:
   Prerelease:
     if: github.ref == 'refs/heads/master'
@@ -43,8 +39,8 @@ jobs:
   Compiles:
     uses: ./.github/workflows/stockfish_compile_test.yml
   Binaries:
-    if: github.ref == 'refs/heads/master' || (startsWith(github.ref_name, 'sf_') && github.ref_type == 'tag')
+    if: github.ref == 'refs/heads/master' || (startsWith(github.ref_name, 'v') && github.ref_type == 'tag')
     uses: ./.github/workflows/stockfish_binaries.yml
   ARM_Binaries:
-    if: github.ref == 'refs/heads/master' || (startsWith(github.ref_name, 'sf_') && github.ref_type == 'tag')
+    if: github.ref == 'refs/heads/master' || (startsWith(github.ref_name, 'v') && github.ref_type == 'tag')
     uses: ./.github/workflows/stockfish_arm_binaries.yml
