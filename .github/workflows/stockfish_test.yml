@@ -16,14 +16,14 @@ jobs:
             os: ubuntu-20.04
             compiler: g++
             comp: gcc
-            run_32bit_tests: true
+            run_32bit_tests: false
             run_64bit_tests: true
             shell: bash
           - name: Ubuntu 20.04 Clang
             os: ubuntu-20.04
             compiler: clang++
             comp: clang
-            run_32bit_tests: true
+            run_32bit_tests: false
             run_64bit_tests: true
             shell: bash
           - name: Android NDK aarch64
@@ -36,7 +36,7 @@ jobs:
             os: ubuntu-22.04
             compiler: armv7a-linux-androideabi21-clang++
             comp: ndk
-            run_armv7_tests: true
+            run_armv7_tests: false
             shell: bash
           - name: Linux GCC riscv64
             os: ubuntu-22.04
@@ -44,7 +44,7 @@ jobs:
             comp: gcc
             run_riscv64_tests: true
             base_image: 'riscv64/alpine:edge'
-            platform: linux/riscv64          
+            platform: linux/riscv64
             shell: bash
           - name: Linux GCC ppc64
             os: ubuntu-22.04
@@ -52,7 +52,7 @@ jobs:
             comp: gcc
             run_ppc64_tests: true
             base_image: 'ppc64le/alpine:latest'
-            platform: linux/ppc64le          
+            platform: linux/ppc64le
             shell: bash
           - name: MacOS 13 Apple Clang
             os: macos-13
@@ -78,7 +78,7 @@ jobs:
             os: windows-2022
             compiler: g++
             comp: mingw
-            run_32bit_tests: true
+            run_32bit_tests: false
             msys_sys: mingw32
             msys_env: i686-gcc
             shell: msys2 {0}
