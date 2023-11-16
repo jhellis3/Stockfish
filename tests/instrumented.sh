@@ -84,7 +84,7 @@ do
 done
 
 # verify the generated net equals the base net
-network=`./stockfish uci | grep 'option name EvalFile type string default' | awk '{print $NF}'`
+network=`./crystal uci | grep 'option name EvalFile type string default' | awk '{print $NF}'`
 echo "Comparing $network to the written verify.nnue"
 diff $network verify.nnue
 
