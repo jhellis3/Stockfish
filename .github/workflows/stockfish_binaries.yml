@@ -129,7 +129,7 @@ jobs:
           make -j2 profile-build ARCH=$BINARY COMP=$COMP WINE_PATH="$SDE"
           make strip ARCH=$BINARY COMP=$COMP
           WINE_PATH="$SDE" ../tests/signature.sh $benchref
-          mv ./stockfish$EXT ../stockfish-$NAME-$BINARY$EXT
+          mv ./crystal$EXT ../crystal-$NAME-$BINARY$EXT
 
       - name: Remove non src files
         run: git clean -fx
@@ -142,35 +142,35 @@ jobs:
       - name: Create directory.
         run: |
           cd ..
-          mkdir stockfish
-          cp -r wiki stockfish/
-          cp -r src stockfish/
-          cp stockfish-$NAME-$BINARY$EXT stockfish/
-          cp "Top CPU Contributors.txt" stockfish/
-          cp Copying.txt stockfish/
-          cp AUTHORS stockfish/
-          cp CITATION.cff stockfish/
-          cp README.md stockfish/
-          cp CONTRIBUTING.md stockfish/
+          mkdir crystal
+          cp -r wiki crystal/
+          cp -r src crystal/
+          cp crystal-$NAME-$BINARY$EXT crystal/
+          cp "Top CPU Contributors.txt" crystal/
+          cp Copying.txt crystal/
+          cp AUTHORS crystal/
+          cp CITATION.cff crystal/
+          cp README.md crystal/
+          cp CONTRIBUTING.md crystal/
 
       - name: Create tar
         if: runner.os != 'Windows'
         run: |
           cd ..
-          tar -cvf stockfish-$NAME-$BINARY.tar stockfish
+          tar -cvf crystal-$NAME-$BINARY.tar crystal
 
       - name: Create zip
         if: runner.os == 'Windows'
         run: |
           cd ..
-          zip -r stockfish-$NAME-$BINARY.zip stockfish
+          zip -r crystal-$NAME-$BINARY.zip crystal
 
       - name: Upload binaries
         if: runner.os != 'Windows'
         uses: actions/upload-artifact@v3
         with:
-          name: stockfish-${{ matrix.config.os }}-${{ matrix.binaries }}
-          path: stockfish-${{ matrix.config.simple_name }}-${{ matrix.binaries }}.tar
+          name: crystal-${{ matrix.config.os }}-${{ matrix.binaries }}
+          path: crystal-${{ matrix.config.simple_name }}-${{ matrix.binaries }}.tar
 
       # Artifacts automatically get zipped
       # to avoid double zipping, we use the unzipped directory
@@ -178,11 +178,11 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v3
         with:
-          name: stockfish-${{ matrix.config.os }}-${{ matrix.binaries }}
-          path: stockfish
+          name: crystal-${{ matrix.config.os }}-${{ matrix.binaries }}
+          path: crystal
 
       - name: Release
-        if: startsWith(github.ref_name, 'sf_') && github.ref_type == 'tag'
+        if: startsWith(github.ref_name, 'v') && github.ref_type == 'tag'
         uses: softprops/action-gh-release@v1
         with:
           files: stockfish-${{ matrix.config.simple_name }}-${{ matrix.binaries }}.${{ matrix.config.archive_ext }}
@@ -204,11 +204,11 @@ jobs:
           echo "CHANGES=$CHANGES" >> $GITHUB_ENV
 
       - name: Prerelease
-        if: github.ref_name == 'master' && env.CHANGES == '0'
+        if: github.ref_name == 'crystal' && env.CHANGES == '0'
         continue-on-error: true
         uses: softprops/action-gh-release@v1
         with:
-          name: Stockfish dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
-          tag_name: stockfish-dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
+          name: Crystal dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
+          tag_name: crystal-dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
           prerelease: true
-          files: stockfish-${{ matrix.config.simple_name }}-${{ matrix.binaries }}.${{ matrix.config.archive_ext }}
+          files: crystal-${{ matrix.config.simple_name }}-${{ matrix.binaries }}.${{ matrix.config.archive_ext }}

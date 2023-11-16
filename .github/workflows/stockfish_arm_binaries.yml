@@ -97,7 +97,7 @@ jobs:
           make -j2 profile-build ARCH=$BINARY COMP=$COMP WINE_PATH=$EMU
           make strip ARCH=$BINARY COMP=$COMP
           WINE_PATH=$EMU ../tests/signature.sh $benchref
-          mv ./stockfish$EXT ../stockfish-android-$BINARY$EXT
+          mv ./crystal$EXT ../crystal-android-$BINARY$EXT
 
       - name: Remove non src files
         run: rm -f *.o .depend *.nnue
@@ -111,29 +111,29 @@ jobs:
       - name: Create tar archive.
         run: |
           cd ..
-          mkdir stockfish
-          cp -r wiki stockfish/
-          cp -r src stockfish/
-          cp stockfish-android-$BINARY$EXT stockfish/
-          cp "Top CPU Contributors.txt" stockfish/
-          cp Copying.txt stockfish/
-          cp AUTHORS stockfish/
-          cp CITATION.cff stockfish/
-          cp README.md stockfish/
-          cp CONTRIBUTING.md stockfish/
-          tar -cvf stockfish-android-$BINARY.tar stockfish
+          mkdir crystal
+          cp -r wiki crystal/
+          cp -r src crystal/
+          cp crystal-android-$BINARY$EXT crystal/
+          cp "Top CPU Contributors.txt" crystal/
+          cp Copying.txt crystal/
+          cp AUTHORS crystal/
+          cp CITATION.cff crystal/
+          cp README.md crystal/
+          cp CONTRIBUTING.md crystal/
+          tar -cvf crystal-android-$BINARY.tar crystal
 
       - name: Upload binaries
         uses: actions/upload-artifact@v3
         with:
-          name: stockfish-android-${{ matrix.binaries }}
-          path: stockfish-android-${{ matrix.binaries }}.tar
+          name: crystal-android-${{ matrix.binaries }}
+          path: crystal-android-${{ matrix.binaries }}.tar
 
       - name: Release
-        if: startsWith(github.ref_name, 'sf_') && github.ref_type == 'tag'
+        if: startsWith(github.ref_name, 'v') && github.ref_type == 'tag'
         uses: softprops/action-gh-release@v1
         with:
-          files: stockfish-android-${{ matrix.binaries }}.tar
+          files: crystal-android-${{ matrix.binaries }}.tar
 
       - name: Get last commit sha
         id: last_commit
@@ -152,11 +152,11 @@ jobs:
           echo "CHANGES=$CHANGES" >> $GITHUB_ENV
 
       - name: Prerelease
-        if: github.ref_name == 'master' && env.CHANGES == '0'
+        if: github.ref_name == 'crystal' && env.CHANGES == '0'
         continue-on-error: true
         uses: softprops/action-gh-release@v1
         with:
-          name: Stockfish dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
-          tag_name: stockfish-dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
+          name: Crystal dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
+          tag_name: crystal-dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
           prerelease: true
-          files: stockfish-android-${{ matrix.binaries }}.tar
+          files: crystal-android-${{ matrix.binaries }}.tar
