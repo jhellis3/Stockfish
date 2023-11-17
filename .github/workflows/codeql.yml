@@ -2,10 +2,10 @@ name: "CodeQL"
 
 on:
   push:
-    branches: [ 'master' ]
+    branches: [ 'crystal' ]
   pull_request:
     # The branches below must be a subset of the branches above
-    branches: [ 'master' ]
+    branches: [ 'crystal' ]
   schedule:
     - cron: '17 18 * * 1'
 
@@ -45,7 +45,7 @@ jobs:
 
     - name: Build
       working-directory: src
-      run: make -j build ARCH=x86-64-modern
+      run: make -j build ARCH=x86-64-sse41-popcnt
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v2
