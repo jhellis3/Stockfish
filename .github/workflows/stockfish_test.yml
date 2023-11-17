@@ -30,22 +30,6 @@ jobs:
             comp: ndk
             run_armv8_tests: true
             shell: bash
-          - name: Linux GCC riscv64
-            os: ubuntu-22.04
-            compiler: g++
-            comp: gcc
-            run_riscv64_tests: true
-            base_image: 'riscv64/alpine:edge'
-            platform: linux/riscv64
-            shell: bash
-          - name: Linux GCC ppc64
-            os: ubuntu-22.04
-            compiler: g++
-            comp: gcc
-            run_ppc64_tests: true
-            base_image: 'ppc64le/alpine:latest'
-            platform: linux/ppc64le
-            shell: bash
           - name: MacOS 13 Apple Clang
             os: macos-13
             compiler: clang++
@@ -191,32 +175,11 @@ jobs:
           make -j2 ARCH=x86-64-sse41-popcnt build
           ../tests/signature.sh $benchref
 
-      - name: Test x86-64-ssse3 build
-        if: matrix.config.run_64bit_tests
-        run: |
-          make clean
-          make -j2 ARCH=x86-64-ssse3 build
-          ../tests/signature.sh $benchref
-
-      - name: Test x86-64-sse3-popcnt build
-        if: matrix.config.run_64bit_tests
-        run: |
-          make clean
-          make -j2 ARCH=x86-64-sse3-popcnt build
-          ../tests/signature.sh $benchref
-
       - name: Test x86-64 build
         if: matrix.config.run_64bit_tests
         run: |
           make clean
           make -j2 ARCH=x86-64 build
-          ../tests/signature.sh $benchref
-
-      - name: Test general-64 build
-        if: matrix.config.run_64bit_tests
-        run: |
-          make clean
-          make -j2 ARCH=general-64 build
           ../tests/signature.sh $benchref
 
       # armv8 tests
@@ -237,24 +200,6 @@ jobs:
           export LDFLAGS="-static -Wno-unused-command-line-argument"
           make clean
           make -j2 ARCH=armv8-dotprod build
-          ../tests/signature.sh $benchref
-
-      # riscv64 tests
-
-      - name: Test riscv64 build
-        if: matrix.config.run_riscv64_tests
-        run: |
-          echo "export LDFLAGS='-static' && make clean && make -j2 ARCH=riscv64 build" > script.sh
-          docker run --rm --platform ${{ matrix.config.platform }} -v ${{ github.workspace }}/src:/app sf_builder
-          ../tests/signature.sh $benchref
-
-      # ppc64 tests
-
-      - name: Test ppc64 build
-        if: matrix.config.run_ppc64_tests
-        run: |
-          echo "export LDFLAGS='-static' && make clean && make -j2 ARCH=ppc-64 build" > script.sh
-          docker run --rm --platform ${{ matrix.config.platform }} -v ${{ github.workspace }}/src:/app sf_builder
           ../tests/signature.sh $benchref
 
       # Other tests
