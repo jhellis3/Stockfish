@@ -1696,7 +1696,7 @@ Config Tablebases::rank_root_moves(const OptionsMap&  options,
 
     config.rootInTB    = false;
     config.useRule50   = bool(options["Syzygy50MoveRule"]);
-    config.probeDepth  = int(options["SyzygyProbeDepth"]);
+    config.probeDepth  = 0;
     config.cardinality = int(options["SyzygyProbeLimit"]);
 
     bool dtz_available = true;
