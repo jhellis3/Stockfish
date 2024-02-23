@@ -185,7 +185,7 @@ jobs:
         if: startsWith(github.ref_name, 'v') && github.ref_type == 'tag'
         uses: softprops/action-gh-release@v1
         with:
-          files: stockfish-${{ matrix.config.simple_name }}-${{ matrix.binaries }}.${{ matrix.config.archive_ext }}
+          files: crystal-${{ matrix.config.simple_name }}-${{ matrix.binaries }}.${{ matrix.config.archive_ext }}
 
       - name: Get last commit sha
         id: last_commit

@@ -765,8 +765,7 @@ Value Search::Worker::search(
            while ((move = mp.next_move()) != move.none())
                if (move != excludedMove)
                {
-                   assert(pos.capture(move) || promotion_type(move) == QUEEN);
-                   assert(depth >= 5);
+                   assert(pos.capture_stage(move));
 
                    // Prefetch the TT entry for the resulting position
                    prefetch(tt.first_entry(pos.key_after(move)));
