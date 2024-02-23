@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2023 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -29,8 +29,9 @@
 namespace Stockfish::Eval::NNUE {
 
 // Class that holds the result of affine transformation of input features
+template<IndexType Size>
 struct alignas(CacheLineSize) Accumulator {
-    std::int16_t accumulation[2][TransformedFeatureDimensions];
+    std::int16_t accumulation[2][Size];
     std::int32_t psqtAccumulation[2][PSQTBuckets];
     bool         computed[2];
 };

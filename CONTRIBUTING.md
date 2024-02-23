@@ -19,7 +19,7 @@ making contributions to Stockfish.
 In case you do not have a C++ compiler installed, you can follow the
 instructions from our wiki.
 
-- [Linux][linux-compiling-link]
+- [Ubuntu][ubuntu-compiling-link]
 - [Windows][windows-compiling-link]
 - [macOS][macos-compiling-link]
 
@@ -61,6 +61,16 @@ Changes to Stockfish C++ code should respect our coding style defined by
 [.clang-format](.clang-format). You can format your changes by running
 `make format`. This requires clang-format version 17 to be installed on your system.
 
+## Navigate
+
+For experienced Git users who frequently use git blame, it is recommended to
+configure the blame.ignoreRevsFile setting.
+This setting is useful for excluding noisy formatting commits.
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
 ## Community and Communication
 
 - Join the [Stockfish discord][discord-link] to discuss ideas, issues, and
@@ -82,6 +92,6 @@ Thank you for contributing to Stockfish and helping us make it even better!
 [discussions-link]:       https://github.com/official-stockfish/Stockfish/discussions/new
 [creating-my-first-test]: https://github.com/official-stockfish/fishtest/wiki/Creating-my-first-test#create-your-test
 [issue-tracker-link]:     https://github.com/official-stockfish/Stockfish/issues
-[linux-compiling-link]:   https://github.com/official-stockfish/Stockfish/wiki/Compiling-from-source#linux
-[windows-compiling-link]: https://github.com/official-stockfish/Stockfish/wiki/Compiling-from-source#windows
-[macos-compiling-link]:   https://github.com/official-stockfish/Stockfish/wiki/Compiling-from-source#macos
+[ubuntu-compiling-link]:  https://github.com/official-stockfish/Stockfish/wiki/Developers#user-content-installing-a-compiler-1
+[windows-compiling-link]: https://github.com/official-stockfish/Stockfish/wiki/Developers#user-content-installing-a-compiler
+[macos-compiling-link]:   https://github.com/official-stockfish/Stockfish/wiki/Developers#user-content-installing-a-compiler-2

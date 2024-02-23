@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2023 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -31,22 +31,16 @@ namespace {
 template<GenType Type, Direction D, bool Enemy>
 ExtMove* make_promotions(ExtMove* moveList, [[maybe_unused]] Square to) {
 
-    if constexpr (Type == CAPTURES || Type == EVASIONS || Type == NON_EVASIONS)
-    {
-        *moveList++ = make<PROMOTION>(to - D, to, QUEEN);
-        if constexpr (Enemy && Type == CAPTURES)
-        {
-            *moveList++ = make<PROMOTION>(to - D, to, ROOK);
-            *moveList++ = make<PROMOTION>(to - D, to, BISHOP);
-            *moveList++ = make<PROMOTION>(to - D, to, KNIGHT);
-        }
-    }
+    constexpr bool all = Type == EVASIONS || Type == NON_EVASIONS;
 
-    if constexpr ((Type == QUIETS && !Enemy) || Type == EVASIONS || Type == NON_EVASIONS)
+    if constexpr (Type == CAPTURES || all)
+        *moveList++ = Move::make<PROMOTION>(to - D, to, QUEEN);
+
+    if constexpr ((Type == CAPTURES && Enemy) || (Type == QUIETS && !Enemy) || all)
     {
-        *moveList++ = make<PROMOTION>(to - D, to, ROOK);
-        *moveList++ = make<PROMOTION>(to - D, to, BISHOP);
-        *moveList++ = make<PROMOTION>(to - D, to, KNIGHT);
+        *moveList++ = Move::make<PROMOTION>(to - D, to, ROOK);
+        *moveList++ = Move::make<PROMOTION>(to - D, to, BISHOP);
+        *moveList++ = Move::make<PROMOTION>(to - D, to, KNIGHT);
     }
 
     return moveList;
@@ -95,13 +89,13 @@ ExtMove* generate_pawn_moves(const Position& pos, ExtMove* moveList, Bitboard ta
         while (b1)
         {
             Square to   = pop_lsb(b1);
-            *moveList++ = make_move(to - Up, to);
+            *moveList++ = Move(to - Up, to);
         }
 
         while (b2)
         {
             Square to   = pop_lsb(b2);
-            *moveList++ = make_move(to - Up - Up, to);
+            *moveList++ = Move(to - Up - Up, to);
         }
     }
 
@@ -134,13 +128,13 @@ ExtMove* generate_pawn_moves(const Position& pos, ExtMove* moveList, Bitboard ta
         while (b1)
         {
             Square to   = pop_lsb(b1);
-            *moveList++ = make_move(to - UpRight, to);
+            *moveList++ = Move(to - UpRight, to);
         }
 
         while (b2)
         {
             Square to   = pop_lsb(b2);
-            *moveList++ = make_move(to - UpLeft, to);
+            *moveList++ = Move(to - UpLeft, to);
         }
 
         if (pos.ep_square() != SQ_NONE)
@@ -156,7 +150,7 @@ ExtMove* generate_pawn_moves(const Position& pos, ExtMove* moveList, Bitboard ta
             assert(b1);
 
             while (b1)
-                *moveList++ = make<EN_PASSANT>(pop_lsb(b1), pos.ep_square());
+                *moveList++ = Move::make<EN_PASSANT>(pop_lsb(b1), pos.ep_square());
         }
     }
 
@@ -186,7 +180,7 @@ ExtMove* generate_moves(const Position& pos, ExtMove* moveList, Bitboard target)
         {
             Square to = pop_lsb(b);
             if (!(pos.blockers_for_king(Us) & from) || aligned(from, to, ksq))
-                *moveList++ = make_move(from, to);
+                *moveList++ = Move(from, to);
         }
     }
 
@@ -228,13 +222,13 @@ ExtMove* generate_all(const Position& pos, ExtMove* moveList) {
         {
            Square to = pop_lsb(b);
            if ((pos.attackers_to(to) & pos.pieces(~Us)) == 0)
-               *moveList++ = make_move(ksq, to);
+               *moveList++ = Move(ksq, to);
         }
 
         if ((Type == QUIETS || Type == NON_EVASIONS) && pos.can_castle(Us & ANY_CASTLING))
             for (CastlingRights cr : {Us & KING_SIDE, Us & QUEEN_SIDE})
                 if (!pos.castling_impeded(cr) && pos.can_castle(cr))
-                    *moveList++ = make<CASTLING>(ksq, pos.castling_rook_square(cr));
+                    *moveList++ = Move::make<CASTLING>(ksq, pos.castling_rook_square(cr));
     }
 
     return moveList;
@@ -284,9 +278,9 @@ ExtMove* generate<LEGAL>(const Position& pos, ExtMove* moveList) {
     moveList =
       pos.checkers() ? generate<EVASIONS>(pos, moveList) : generate<NON_EVASIONS>(pos, moveList);
     while (cur != moveList)
-        if (((pinned & from_sq(*cur)) || from_sq(*cur) == ksq || type_of(*cur) == EN_PASSANT)
+        if (((pinned & cur->from_sq()) || cur->from_sq() == ksq || cur->type_of() == EN_PASSANT)
             && !pos.legal(*cur))
-            *cur = (--moveList)->move;
+            *cur = *(--moveList);
         else
             ++cur;
 

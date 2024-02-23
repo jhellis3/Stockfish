@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2023 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -89,7 +89,7 @@ struct Magic {
 extern Magic RookMagics[SQUARE_NB];
 extern Magic BishopMagics[SQUARE_NB];
 
-inline Bitboard square_bb(Square s) {
+constexpr Bitboard square_bb(Square s) {
     assert(is_ok(s));
     return (1ULL << s);
 }
@@ -163,7 +163,6 @@ inline Bitboard pawn_attacks_bb(Color c, Square s) {
 inline Bitboard line_bb(Square s1, Square s2) {
 
     assert(is_ok(s1) && is_ok(s2));
-
     return LineBB[s1][s2];
 }
 
@@ -178,7 +177,6 @@ inline Bitboard line_bb(Square s1, Square s2) {
 inline Bitboard between_bb(Square s1, Square s2) {
 
     assert(is_ok(s1) && is_ok(s2));
-
     return BetweenBB[s1][s2];
 }
 
@@ -216,7 +214,6 @@ template<PieceType Pt>
 inline Bitboard attacks_bb(Square s) {
 
     assert((Pt != PAWN) && (is_ok(s)));
-
     return PseudoAttacks[Pt][s];
 }
 

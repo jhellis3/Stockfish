@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2023 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
@@ -32,12 +33,25 @@
 
 namespace Stockfish {
 
-constexpr int PAWN_HISTORY_SIZE = 512;  // has to be a power of 2
+constexpr int PAWN_HISTORY_SIZE        = 512;    // has to be a power of 2
+constexpr int CORRECTION_HISTORY_SIZE  = 16384;  // has to be a power of 2
+constexpr int CORRECTION_HISTORY_LIMIT = 1024;
 
 static_assert((PAWN_HISTORY_SIZE & (PAWN_HISTORY_SIZE - 1)) == 0,
               "PAWN_HISTORY_SIZE has to be a power of 2");
 
-inline int pawn_structure(const Position& pos) { return pos.pawn_key() & (PAWN_HISTORY_SIZE - 1); }
+static_assert((CORRECTION_HISTORY_SIZE & (CORRECTION_HISTORY_SIZE - 1)) == 0,
+              "CORRECTION_HISTORY_SIZE has to be a power of 2");
+
+enum PawnHistoryType {
+    Normal,
+    Correction
+};
+
+template<PawnHistoryType T = Normal>
+inline int pawn_structure_index(const Position& pos) {
+    return pos.pawn_key() & ((T == Normal ? PAWN_HISTORY_SIZE : CORRECTION_HISTORY_SIZE) - 1);
+}
 
 // StatsEntry stores the stat table value. It is usually a number but could
 // be a move or even a nested history. We use a class instead of a naked value
@@ -55,12 +69,12 @@ class StatsEntry {
     operator const T&() const { return entry; }
 
     void operator<<(int bonus) {
-        assert(abs(bonus) <= D);  // Ensure range is [-D, D]
+        assert(std::abs(bonus) <= D);  // Ensure range is [-D, D]
         static_assert(D <= std::numeric_limits<T>::max(), "D overflows T");
 
-        entry += (bonus * D - entry * abs(bonus)) / (D * 5 / 4);
+        entry += bonus - entry * std::abs(bonus) / D;
 
-        assert(abs(entry) <= D);
+        assert(std::abs(entry) <= D);
     }
 };
 
@@ -96,11 +110,10 @@ enum StatsType {
     Captures
 };
 
-// ButterflyHistory records how often quiet moves have been successful or
-// unsuccessful during the current search, and is used for reduction and move
-// ordering decisions. It uses 2 tables (one for each color) indexed by
-// the move's from and to squares, see www.chessprogramming.org/Butterfly_Boards
-// (~11 elo)
+// ButterflyHistory records how often quiet moves have been successful or unsuccessful
+// during the current search, and is used for reduction and move ordering decisions.
+// It uses 2 tables (one for each color) indexed by the move's from and to squares,
+// see www.chessprogramming.org/Butterfly_Boards (~11 elo)
 using ButterflyHistory = Stats<int16_t, 7183, COLOR_NB, int(SQUARE_NB) * int(SQUARE_NB)>;
 
 // CounterMoveHistory stores counter moves indexed by [piece][to] of the previous
@@ -122,10 +135,14 @@ using ContinuationHistory = Stats<PieceToHistory, NOT_USED, PIECE_NB, SQUARE_NB>
 // PawnHistory is addressed by the pawn structure and a move's [piece][to]
 using PawnHistory = Stats<int16_t, 8192, PAWN_HISTORY_SIZE, PIECE_NB, SQUARE_NB>;
 
+// CorrectionHistory is addressed by color and pawn structure
+using CorrectionHistory =
+  Stats<int16_t, CORRECTION_HISTORY_LIMIT, COLOR_NB, CORRECTION_HISTORY_SIZE>;
+
 // MovePicker class is used to pick one pseudo-legal move at a time from the
 // current position. The most important method is next_move(), which returns a
 // new pseudo-legal move each time it is called, until there are no moves left,
-// when MOVE_NONE is returned. In order to improve the efficiency of the
+// when Move::none() is returned. In order to improve the efficiency of the
 // alpha-beta algorithm, MovePicker attempts to return the moves which are most
 // likely to get a cut-off first.
 class MovePicker {
@@ -153,9 +170,8 @@ class MovePicker {
                const ButterflyHistory*,
                const CapturePieceToHistory*,
                const PieceToHistory**,
-               const PawnHistory*,
-               Square);
-    MovePicker(const Position&, Move, Value, const CapturePieceToHistory*);
+               const PawnHistory*);
+    MovePicker(const Position&, Move, int, const CapturePieceToHistory*);
     Move next_move(bool skipQuiets = false);
 
    private:
@@ -172,12 +188,11 @@ class MovePicker {
     const PieceToHistory**       continuationHistory;
     const PawnHistory*           pawnHistory;
     Move                         ttMove;
-    ExtMove                      refutations[3], *cur, *endMoves, *endBadCaptures;
-    int                          stage;
-    Square                       recaptureSquare;
-    Value                        threshold;
-    Depth                        depth;
-    ExtMove                      moves[MAX_MOVES];
+    ExtMove refutations[3], *cur, *endMoves, *endBadCaptures, *beginBadQuiets, *endBadQuiets;
+    int     stage;
+    int     threshold;
+    Depth   depth;
+    ExtMove moves[MAX_MOVES];
 };
 
 }  // namespace Stockfish

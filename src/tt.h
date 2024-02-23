@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2023 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -45,7 +45,7 @@ struct TTEntry {
     Depth depth() const { return Depth(depth8 + DEPTH_OFFSET); }
     bool  is_pv() const { return bool (genBound8 & 0x4); }
     Bound bound() const { return Bound(genBound8 & 0x3); }
-    void save(Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev);
+    void  save(Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev, uint8_t generation8);
 
    private:
     friend class TranspositionTable;
@@ -53,7 +53,7 @@ struct TTEntry {
     uint64_t key;
     uint8_t  depth8;
     uint8_t  genBound8;
-    uint16_t move16;
+    Move     move16;
     int16_t  value16;
     int16_t  eval16;
 };
@@ -87,23 +87,23 @@ class TranspositionTable {
     void new_search() { generation8 += GENERATION_DELTA; }  // Lower bits are used for other things
     TTEntry* probe(const Key key, bool& found) const;
     int      hashfull() const;
-    void     resize(size_t mbSize);
-    void     clear();
+    void     resize(size_t mbSize, int threadCount);
+    void     clear(size_t threadCount);
 
     // The key is used to get the index of the cluster
     TTEntry* first_entry(const Key key) const {
         return &table[(key * (__uint128_t)clusterCount) >> 64].entry[0];
     }
 
+    uint8_t generation() const { return generation8; }
+
    private:
     friend struct TTEntry;
 
     size_t   clusterCount;
-    Cluster* table;
-    uint8_t  generation8;  // Size must be not bigger than TTEntry::genBound8
+    Cluster* table       = nullptr;
+    uint8_t  generation8 = 0;  // Size must be not bigger than TTEntry::genBound8
 };
-
-extern TranspositionTable TT;
 
 }  // namespace Stockfish
 

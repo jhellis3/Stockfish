@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2023 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,12 +19,14 @@
 #ifndef MISC_H_INCLUDED
 #define MISC_H_INCLUDED
 
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <iosfwd>
 #include <string>
+#include <vector>
 
 #define stringify2(x) #x
 #define stringify(x) stringify2(x)
@@ -163,11 +165,29 @@ namespace WinProcGroup {
 void bindThisThread(size_t idx);
 }
 
-namespace CommandLine {
-void init(int argc, char* argv[]);
 
-extern std::string binaryDirectory;   // path of the executable directory
-extern std::string workingDirectory;  // path of the working directory
+struct CommandLine {
+   public:
+    CommandLine(int, char**);
+
+    int    argc;
+    char** argv;
+
+    std::string binaryDirectory;   // path of the executable directory
+    std::string workingDirectory;  // path of the working directory
+};
+
+namespace Utility {
+
+template<typename T, typename Predicate>
+void move_to_front(std::vector<T>& vec, Predicate pred) {
+    auto it = std::find_if(vec.begin(), vec.end(), pred);
+
+    if (it != vec.end())
+    {
+        std::rotate(vec.begin(), it, it + 1);
+    }
+}
 }
 
 }  // namespace Stockfish

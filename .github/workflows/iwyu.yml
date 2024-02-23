@@ -1,4 +1,4 @@
-name: Stockfish
+name: IWYU
 on:
   workflow_call:
 jobs:
@@ -11,12 +11,12 @@ jobs:
         shell: bash
     steps:
       - name: Checkout Stockfish
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: Stockfish
 
       - name: Checkout include-what-you-use
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: include-what-you-use/include-what-you-use
           ref: f25caa280dc3277c4086ec345ad279a2463fea0f
@@ -44,4 +44,4 @@ jobs:
           make analyze
           COMP=clang
           CXX=include-what-you-use
-          CXXFLAGS="-stdlib=libc++ -Xiwyu --comment_style=long -Xiwyu --mapping='${{ github.workspace }}/Stockfish/.github/workflows/libcxx17.imp' -Xiwyu --error"
+          CXXFLAGS="-stdlib=libc++ -Xiwyu --comment_style=long -Xiwyu --mapping='${{ github.workspace }}/Stockfish/.github/ci/libcxx17.imp' -Xiwyu --error"
