@@ -157,6 +157,7 @@ class Position {
     bool  is_chess960() const;
     bool  is_draw(int ply) const;
     bool  has_game_cycle(int ply) const;
+    bool  king_danger() const;
     bool  has_repeated() const;
     int   rule50_count() const;
     Value non_pawn_material(Color c) const;
