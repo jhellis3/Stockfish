@@ -493,7 +493,7 @@ Value Search::Worker::search(
     ttDepth = tte->depth();
     ttBound = tte->bound();
     ttMove =  rootNode ? thisThread->rootMoves[thisThread->pvIdx].pv[0]
-            : ss->ttHit    ? tte->move() : move.none();
+            : ss->ttHit    ? tte->move() : Move::none();
     ttCapture = ttMove && pos.capture(ttMove);
 
     // At this point, if excluded, skip straight to step 6, static eval. However,
@@ -645,7 +645,7 @@ Value Search::Worker::search(
 
         // ttValue can be used as a better position evaluation (~7 Elo)
         if (    ttValue != VALUE_NONE
-            && (ttMove != move.none()|| ttValue <= eval)
+            && (ttMove != Move::none() || ttValue <= eval)
             && (ttBound & (ttValue > eval ? BOUND_LOWER : BOUND_UPPER)))
             eval = ttValue;
     }
@@ -689,13 +689,12 @@ Value Search::Worker::search(
     {
        // Step 8. Futility pruning: child node (~40 Elo)
        // The depth condition is important for mate finding.
-       if (    depth < (8 + 2 * (ttCapture && !(ss-1)->mainLine && !(ss-1)->secondaryLine)
-                          - 3 * ((ss-1)->mainLine || (ss-1)->secondaryLine || (ttMove && !ttCapture)))
+       if (    depth < (9 - 2 * ((ss-1)->mainLine || (ss-1)->secondaryLine || (ttMove && !ttCapture)))
            && !ss->ttPv
            && !kingDanger
            && !gameCycle
            && !(thisThread->nmpGuard && nullParity)
-           &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving) - (ss-1)->statScore / 321 >= beta)
+           &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving) - (ss-1)->statScore / 314 >= beta)
            return eval;
 
        // Step 9. Null move search with verification search (~35 Elo)
@@ -762,7 +761,7 @@ Value Search::Worker::search(
            MovePicker mp(pos, ttMove, KnightValue - BishopValue + PieceValue[type_of(pos.captured_piece())],
                          &captureHistory);
 
-           while ((move = mp.next_move()) != move.none())
+           while ((move = mp.next_move()) != Move::none())
                if (move != excludedMove)
                {
                    assert(pos.capture_stage(move));
@@ -954,7 +953,7 @@ Value Search::Worker::search(
             if (PvNode && (moveCount == 1 || value > alpha))
             {
                 (ss+1)->pv = pv;
-                (ss+1)->pv[0] = move.none();
+                (ss+1)->pv[0] = Move::none();
             }
         }
         else
@@ -1058,7 +1057,7 @@ Value Search::Worker::search(
             ss->excludedMove = move;
             // the search with excludedMove will update ss->staticEval
             value = search<NonPV>(pos, ss, singularBeta - 1, singularBeta, singularDepth, cutNode);
-            ss->excludedMove = move.none();
+            ss->excludedMove = Move::none();
 
             if (value < singularBeta)
             {
@@ -1442,7 +1441,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
     tte     = tt.probe(posKey, ss->ttHit);
     ttValue = ss->ttHit ? value_from_tt(tte->value(), ss->ply) : VALUE_NONE;
     ttBound = tte->bound();
-    ttMove  = ss->ttHit ? tte->move() : move.none();
+    ttMove  = ss->ttHit ? tte->move() : Move::none();
     pvHit   = ss->ttHit && tte->is_pv();
 
     // At non-PV nodes we check for an early TT cutoff
@@ -1471,7 +1470,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
 
             // ttValue can be used as a better position evaluation (~13 Elo)
             if (    ttValue != VALUE_NONE
-                && (ttMove != move.none() || ttValue <= bestValue)
+                && (ttMove != Move::none() || ttValue <= bestValue)
                 && (ttBound & (ttValue > bestValue ? BOUND_LOWER : BOUND_UPPER)))
                 bestValue = ttValue;
         }

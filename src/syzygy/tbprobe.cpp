@@ -1704,10 +1704,7 @@ Config Tablebases::rank_root_moves(const OptionsMap&  options,
     // Tables with fewer pieces than SyzygyProbeLimit are searched with
     // probeDepth == DEPTH_ZERO
     if (config.cardinality > MaxCardinality)
-    {
         config.cardinality = MaxCardinality;
-        config.probeDepth  = 0;
-    }
 
     if (config.cardinality >= popcount(pos.pieces()) && !pos.can_castle(ANY_CASTLING))
     {
@@ -1728,10 +1725,6 @@ Config Tablebases::rank_root_moves(const OptionsMap&  options,
         std::stable_sort(
           rootMoves.begin(), rootMoves.end(),
           [](const Search::RootMove& a, const Search::RootMove& b) { return a.tbRank > b.tbRank; });
-
-        // Probe during search only if DTZ is not available and we are winning
-        if (dtz_available || rootMoves[0].tbScore <= VALUE_DRAW)
-            config.cardinality = 0;
     }
     else
     {
