@@ -593,10 +593,10 @@ Value Search::Worker::search(
 
                 int drawScore = tbConfig.useRule50 ? 1 : 0;
 
-                int centiPly = TraditionalPawnValue * ss->ply / 100;
+                int centiPly = PawnConversionFactor * ss->ply / 100;
 
-                Value tbValue =    v < -drawScore ? -VALUE_TB_WIN + (10 * TraditionalPawnValue * (v == -1)) + centiPly + TraditionalPawnValue * popcount(pos.pieces( pos.side_to_move()))
-                                 : v >  drawScore ?  VALUE_TB_WIN - (10 * TraditionalPawnValue * (v ==  1)) - centiPly - TraditionalPawnValue * popcount(pos.pieces(~pos.side_to_move()))
+                Value tbValue =    v < -drawScore ? -VALUE_TB_WIN + (10 * PawnConversionFactor * (v == -1)) + centiPly + PawnConversionFactor * popcount(pos.pieces( pos.side_to_move()))
+                                 : v >  drawScore ?  VALUE_TB_WIN - (10 * PawnConversionFactor * (v ==  1)) - centiPly - PawnConversionFactor * popcount(pos.pieces(~pos.side_to_move()))
                                  : v < 0 ? Value(-56) : VALUE_DRAW;
 
                 if (    abs(v) <= drawScore
@@ -1216,7 +1216,7 @@ Value Search::Worker::search(
             RootMove& rm =
               *std::find(thisThread->rootMoves.begin(), thisThread->rootMoves.end(), move);
 
-            if (abs(value) < VALUE_TB_WIN - 7 * TraditionalPawnValue)
+            if (abs(value) < VALUE_TB_WIN - 7 * PawnConversionFactor)
                 rm.averageScore = rm.averageScore != -VALUE_INFINITE ? (2 * value + rm.averageScore) / 3 : value;
             else
                 rm.averageScore = value;
@@ -1846,7 +1846,7 @@ std::string SearchManager::pv(const Search::Worker&     worker,
         if (v == -VALUE_INFINITE)
             v = VALUE_ZERO;
 
-        bool tb = worker.tbConfig.rootInTB && std::abs(v) < VALUE_TB_WIN - 6 * TraditionalPawnValue;
+        bool tb = worker.tbConfig.rootInTB && std::abs(v) < VALUE_TB_WIN - 6 * PawnConversionFactor;
 
         v       = tb ? rootMoves[i].tbScore : v;
 

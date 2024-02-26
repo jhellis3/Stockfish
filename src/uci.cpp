@@ -324,7 +324,7 @@ void UCI::position(Position& pos, std::istringstream& is, StateListPtr& states) 
     }
 }
 
-int UCI::to_cp(Value v) { return 100 * v / TraditionalPawnValue; }
+int UCI::to_cp(Value v) { return 100 * v / PawnConversionFactor; }
 
 std::string UCI::value(Value v) {
     assert(-VALUE_INFINITE < v && v < VALUE_INFINITE);

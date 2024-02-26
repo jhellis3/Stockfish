@@ -200,12 +200,13 @@ Value Eval::evaluate(const Position& pos) {
     assert(!pos.checkers());
 
     int  simpleEval = simple_eval(pos, pos.side_to_move());
+    int  r50        = std::min(96, pos.rule50_count());
     bool smallNet   = std::abs(simpleEval) > 1050;
 
     Value v = smallNet ? NNUE::evaluate<NNUE::Small>(pos, true)
                        : NNUE::evaluate<NNUE::Big>(pos, true);
 
-    v = v * std::max(1, (101 - pos.rule50_count())) / 101;
+    v = v * (9400 -  (r50 * r50)) / 10000;
 
     // Do not return evals greater than a TB result
     v = std::clamp(v, -VALUE_MAX_EVAL, VALUE_MAX_EVAL);

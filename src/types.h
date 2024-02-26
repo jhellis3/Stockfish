@@ -160,9 +160,9 @@ constexpr Value BishopValue = 825;
 constexpr Value RookValue   = 1276;
 constexpr Value QueenValue  = 2538;
 
-constexpr Value TraditionalPawnValue = (QueenValue / 9 + RookValue / 5 + BishopValue / 3 + KnightValue / 3) / 4;
-constexpr Value VALUE_TB_WIN         = 101 * TraditionalPawnValue;
-constexpr Value VALUE_MAX_EVAL       = VALUE_TB_WIN - 8 * TraditionalPawnValue;
+constexpr Value PawnConversionFactor = 356;
+constexpr Value VALUE_TB_WIN         = 51 * PawnConversionFactor;
+constexpr Value VALUE_MAX_EVAL       = VALUE_TB_WIN - 8 * PawnConversionFactor;
 
 
 // clang-format off
