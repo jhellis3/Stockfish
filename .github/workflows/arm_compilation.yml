@@ -82,7 +82,7 @@ jobs:
           make -j4 profile-build ARCH=$BINARY COMP=$COMP WINE_PATH=$EMU
           make strip ARCH=$BINARY COMP=$COMP
           WINE_PATH=$EMU ../tests/signature.sh $benchref
-          mv ./stockfish$EXT ../stockfish-android-$BINARY$EXT
+          mv ./crystal$EXT ../crystal-android-$BINARY$EXT
 
       - name: Remove non src files
         run: git clean -fx
