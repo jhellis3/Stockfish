@@ -77,7 +77,7 @@ jobs:
           make -j4 profile-build ARCH=$BINARY COMP=$COMP WINE_PATH="$SDE"
           make strip ARCH=$BINARY COMP=$COMP
           WINE_PATH="$SDE" ../tests/signature.sh $benchref
-          mv ./stockfish$EXT ../stockfish-$NAME-$BINARY$EXT
+          mv ./crystal$EXT ../crystal-$NAME-$BINARY$EXT
 
       - name: Remove non src files
         run: git clean -fx
