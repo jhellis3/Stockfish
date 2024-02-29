@@ -23,9 +23,10 @@
 #include <cstddef>
 
 #include "types.h"
-#include "position.h"
 
 namespace Stockfish {
+
+class Position;
 
 enum GenType {
     CAPTURES,

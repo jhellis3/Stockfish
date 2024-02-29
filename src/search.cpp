@@ -30,6 +30,7 @@
 #include <string>
 #include <utility>
 #include <sstream>
+#include "bitboard.h"
 #include "evaluate.h"
 #include "misc.h"
 #include "movegen.h"

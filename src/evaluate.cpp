@@ -194,7 +194,7 @@ Value Eval::evaluate(const Position& pos) {
 
     int  simpleEval = simple_eval(pos, pos.side_to_move());
     int  r50        = std::min(96, pos.rule50_count());
-    bool smallNet   = std::abs(simpleEval) > 1050;
+    bool smallNet   = std::abs(simpleEval) > 2136;
 
     Value v = smallNet ? NNUE::evaluate<NNUE::Small>(pos, true)
                        : NNUE::evaluate<NNUE::Big>(pos, true);

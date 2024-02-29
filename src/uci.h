@@ -36,10 +36,6 @@ namespace Eval::NNUE {
 enum NetSize : int;
 }
 
-namespace Search {
-class Worker;
-}
-
 class Move;
 enum Square : int;
 using Value = int;
