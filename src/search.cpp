@@ -614,7 +614,7 @@ Value Search::Worker::search(
         }
     }
 
-    kingDanger = ourMove ? false : pos.king_danger();
+    kingDanger = !ourMove && pos.king_danger(us);
 
     // Step 6. Static evaluation of the position
     Value unadjustedStaticEval = VALUE_NONE;
@@ -860,6 +860,8 @@ Value Search::Worker::search(
                          && (ttBound & BOUND_UPPER)
                          && ttDepth >= depth;
 
+    bool kingDangerThem = ourMove && pos.king_danger(~us);
+
     bool lmPrunable = (  !ourMove
                        || ss->ply > 6
                        || (ss-1)->moveCount > 1
@@ -875,6 +877,7 @@ Value Search::Worker::search(
 
     bool allowLMR =     depth > 1
                     && !gameCycle
+                    && (!kingDangerThem || ss->ply > 6)
                     && (!PvNode || ss->ply > 1);
 
     bool doSingular =    !rootNode
@@ -1086,7 +1089,7 @@ Value Search::Worker::search(
 
                 // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
                 // Add ttValue <= value?
-                else if (!gameCycle && alpha < VALUE_MAX_EVAL)
+                else if (!gameCycle && !kingDangerThem && alpha < VALUE_MAX_EVAL)
                     extension = (cutNode && (ss-1)->moveCount > 1 && !(ss-1)->secondaryLine && depth < 19) ? -2 : -1;
             }
         }
@@ -1122,8 +1125,6 @@ Value Search::Worker::search(
         thisThread->nodes.fetch_add(1, std::memory_order_relaxed);
         pos.do_move(move, st, givesCheck);
 
-        bool lateKingDanger = (rootDepth > 10 && ourMove && ss->ply < 7 && pos.king_danger());
-
         ss->statScore =  2 * thisThread->mainHistory[us][move.from_to()]
                            + (*contHist[0])[movedPiece][move.to_sq()]
                            + (*contHist[1])[movedPiece][move.to_sq()]
@@ -1143,7 +1144,6 @@ Value Search::Worker::search(
         // been searched. In general, we would like to reduce them, but there are many
         // cases where we extend a son if it has good chances to be "interesting".
         if (    allowLMR
-            && !lateKingDanger
             &&  moveCount > 1
             && (!capture || (cutNode && (ss-1)->moveCount > 1)))
         {

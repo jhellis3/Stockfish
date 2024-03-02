@@ -1156,9 +1156,9 @@ bool Position::has_repeated() const {
     return false;
 }
 
-bool Position::king_danger() const {
+bool Position::king_danger(Color c) const {
 
-    Square ksq = square<KING>(sideToMove);
+    Square ksq = square<KING>(c);
     Bitboard kingRing, kingAttackers, legalKing;
 
     kingRing = kingAttackers = legalKing = 0;
@@ -1168,17 +1168,17 @@ bool Position::king_danger() const {
     while (kingRing)
     {
       Square to = pop_lsb(kingRing);
-      Bitboard enemyAttackers = pieces(~sideToMove) & attackers_to(to);
+      Bitboard enemyAttackers = pieces(~c) & attackers_to(to);
       if (!enemyAttackers)
       {
-          if ((pieces(sideToMove) & to) == 0)
+          if ((pieces(c) & to) == 0)
               legalKing |= to;
       }
 
       while (enemyAttackers)
       {
         Square currentEnemy = pop_lsb(enemyAttackers);
-        if ((currentEnemy & ~kingRing) || (more_than_one(attackers_to(to) & pieces(~sideToMove))))
+        if ((currentEnemy & ~kingRing) || (more_than_one(attackers_to(to) & pieces(~c))))
             kingAttackers |= currentEnemy;
       }
     }
