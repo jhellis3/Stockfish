@@ -194,10 +194,10 @@ Value Eval::evaluate(const Position& pos) {
 
     int  simpleEval = simple_eval(pos, pos.side_to_move());
     int  r50        = std::min(96, pos.rule50_count());
-    bool smallNet   = std::abs(simpleEval) > 2136;
+    bool smallNet   = std::abs(simpleEval) > 2500;
 
-    Value v = smallNet ? NNUE::evaluate<NNUE::Small>(pos, true)
-                       : NNUE::evaluate<NNUE::Big>(pos, true);
+    Value v = smallNet ? NNUE::evaluate<NNUE::Small>(pos, true, true)
+                       : NNUE::evaluate<NNUE::Big>(pos, true, false);
 
     v = v * (9400 -  (r50 * r50)) / 10000;
 

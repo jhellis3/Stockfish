@@ -54,11 +54,13 @@ using namespace Search;
 
 namespace {
 
-
 // Futility margin
-Value futility_margin(Depth d, bool noTtCutNode, bool improving) {
-    Value futilityMult = 117 - 44 * noTtCutNode;
-    return (futilityMult * d - 3 * futilityMult / 2 * improving);
+Value futility_margin(Depth d, bool noTtCutNode, bool improving, bool oppWorsening) {
+    Value futilityMult       = 117 - 44 * noTtCutNode;
+    Value improvingDeduction = 3 * improving * futilityMult / 2;
+    Value worseningDeduction = (331 + 45 * improving) * oppWorsening * futilityMult / 1024;
+
+    return futilityMult * d - improvingDeduction - worseningDeduction;
 }
 
 constexpr int futility_move_count(bool improving, Depth depth) {
@@ -158,7 +160,7 @@ void Search::Worker::start_searching() {
 
     Worker* bestThread = this;
 
-    if (int(options["MultiPV"]) == 1 && !limits.depth
+    if (int(options["MultiPV"]) == 1 && !limits.depth && !limits.mate
         && rootMoves[0].pv[0] != Move::none())
         bestThread = threads.get_best_thread()->worker.get();
 
@@ -352,13 +354,17 @@ void Search::Worker::iterative_deepening() {
             lastBestMoveDepth = rootDepth;
         }
 
-        // Have we found a "mate in x"?
-        if (limits.mate && bestValue >= VALUE_MATE_IN_MAX_PLY
-            && VALUE_MATE - bestValue <= 2 * limits.mate)
-            threads.stop = true;
-
         if (!mainThread)
             continue;
+
+        // Have we found a "mate in x"?
+        if (limits.mate && rootMoves[0].score == rootMoves[0].uciScore
+            && ((rootMoves[0].score >= VALUE_MATE_IN_MAX_PLY
+                 && VALUE_MATE - rootMoves[0].score <= 2 * limits.mate)
+                || (rootMoves[0].score != -VALUE_INFINITE
+                    && rootMoves[0].score <= VALUE_MATED_IN_MAX_PLY
+                    && VALUE_MATE + rootMoves[0].score <= 2 * limits.mate)))
+            threads.stop = true;
 
         // Use part of the gained time from a previous stable move for the current move
         for (Thread* th : threads)
@@ -370,10 +376,10 @@ void Search::Worker::iterative_deepening() {
         // Do we have time for the next iteration? Can we stop searching now?
         if (limits.use_time_management() && !threads.stop && !mainThread->stopOnPonderhit)
         {
-            double fallingEval = (66 + 14 * (mainThread->bestPreviousAverageScore - bestValue)
-                                     +  6 * (mainThread->iterValue[iterIdx] - bestValue)) / 583.0;
+            double fallingEval = (1067 + 223 * (mainThread->bestPreviousAverageScore - bestValue)
+                                     +  97 * (mainThread->iterValue[iterIdx] - bestValue)) / 10000.0;
 
-            fallingEval = std::clamp(fallingEval, 0.51, 1.51);
+            fallingEval = std::clamp(fallingEval, 0.580, 1.667);
 
             // If the bestMove is stable over several iterations, reduce time accordingly
             timeReduction = lastBestMoveDepth + 6 < completedDepth ? 0.68
@@ -455,7 +461,7 @@ Value Search::Worker::search(
     Bound   ttBound;
     Value   bestValue, value, ttValue, eval, probCutBeta;
     bool    givesCheck, improving, priorCapture, isMate, gameCycle;
-    bool    capture, moveCountPruning,
+    bool    capture, moveCountPruning, opponentWorsening,
             ttCapture, kingDanger, ourMove, nullParity;
     Piece   movedPiece;
     int     moveCount, captureCount, quietCount;
@@ -553,20 +559,17 @@ Value Search::Worker::search(
         && (ttBound & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
     {
         // If ttMove is quiet, update move sorting heuristics on TT hit (~2 Elo)
-        if (ttMove)
+        if (ttMove && ttValue >= beta)
         {
-            if (ttValue >= beta)
-            {
-                // Bonus for a quiet ttMove that fails high (~2 Elo)
-                if (!ttCapture)
-                    update_quiet_stats(pos, ss, *this, ttMove, stat_bonus(depth));
+            // Bonus for a quiet ttMove that fails high (~2 Elo)
+            if (!ttCapture)
+                update_quiet_stats(pos, ss, *this, ttMove, stat_bonus(depth));
 
-                // Extra penalty for early quiet moves of
-                // the previous ply (~0 Elo on STC, ~2 Elo on LTC).
-                if (prevSq != SQ_NONE && (ss - 1)->moveCount <= 2 && !priorCapture)
-                    update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq,
-                                                  -stat_malus(depth + 1));
-            }
+            // Extra penalty for early quiet moves of
+            // the previous ply (~1 Elo on STC, ~2 Elo on LTC)
+            if (prevSq != SQ_NONE && (ss - 1)->moveCount <= 2 && !priorCapture)
+                update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq,
+                                              -stat_malus(depth + 1));
         }
 
         return ttValue;
@@ -680,6 +683,8 @@ Value Search::Worker::search(
                 ? ss->staticEval > (ss - 2)->staticEval
                 : (ss - 4)->staticEval != VALUE_NONE && ss->staticEval > (ss - 4)->staticEval;
 
+    opponentWorsening = ss->staticEval + (ss - 1)->staticEval > 2 && (depth != 2 || !improving);
+
     // Begin early pruning.
     if (   !PvNode
         && (ourMove || !excludedMove)
@@ -695,7 +700,7 @@ Value Search::Worker::search(
            && !kingDanger
            && !gameCycle
            && !(thisThread->nmpGuard && nullParity)
-           &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving) - (ss-1)->statScore / 314 >= beta)
+           &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving, opponentWorsening) - (ss-1)->statScore / 314 >= beta)
            return eval;
 
        // Step 9. Null move search with verification search (~35 Elo)
@@ -859,6 +864,13 @@ Value Search::Worker::search(
                          && ttMove
                          && (ttBound & BOUND_UPPER)
                          && ttDepth >= depth;
+
+    bool lmrCapture = cutNode && (ss-1)->moveCount > 1;
+
+    bool gameCycleExtension =    gameCycle
+                              && (   PvNode
+                                  || (ss-1)->mainLine
+                                  || ((ss-1)->secondaryLine && thisThread->pvValue < VALUE_DRAW));
 
     bool kingDangerThem = ourMove && pos.king_danger(~us);
 
@@ -1036,10 +1048,7 @@ Value Search::Worker::search(
         }
 
         // Step 15. Extensions (~100 Elo)
-        if (   gameCycle
-            && (   PvNode
-                || (ss-1)->mainLine
-                || ((ss-1)->secondaryLine && thisThread->pvValue < VALUE_DRAW)))
+        if (gameCycleExtension)
             extension = 2;
 
         // Singular extension search (~94 Elo). If all moves but one fail low on a
@@ -1073,6 +1082,9 @@ Value Search::Worker::search(
                     extension = 2;
                     depth += depth < 15;
                 }
+                else if (   PvNode && !ttCapture && ss->multipleExtensions <= 5
+                         && value < singularBeta - 50)
+                    extension = 2;
                 else
                     extension = 1;
             }
@@ -1145,7 +1157,7 @@ Value Search::Worker::search(
         // cases where we extend a son if it has good chances to be "interesting".
         if (    allowLMR
             &&  moveCount > 1
-            && (!capture || (cutNode && (ss-1)->moveCount > 1)))
+            && (!capture || lmrCapture))
         {
             // In general we want to cap the LMR depth search at newDepth, but when
             // reduction is negative, we allow this move a limited search extension
@@ -1181,7 +1193,7 @@ Value Search::Worker::search(
         // Step 18. Full-depth search when LMR is skipped
         else if (!PvNode || moveCount > 1)
         {
-            // Increase reduction if ttMove is not present (~1 Elo)
+            // Increase reduction if ttMove is not present (~6 Elo)
             if (!ttMove)
                 r += 2;
 
