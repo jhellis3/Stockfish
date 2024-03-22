@@ -22,43 +22,46 @@
 #include <cassert>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <deque>
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <utility>
 #include <vector>
-#include <cstdint>
 
 #include "benchmark.h"
 #include "evaluate.h"
 #include "movegen.h"
-#include "nnue/evaluate_nnue.h"
-#include "nnue/nnue_architecture.h"
+#include "nnue/network.h"
+#include "nnue/nnue_common.h"
+#include "perft.h"
 #include "position.h"
 #include "search.h"
 #include "syzygy/tbprobe.h"
 #include "types.h"
 #include "ucioption.h"
-#include "perft.h"
 
 namespace Stockfish {
 
-constexpr auto StartFEN             = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-constexpr int  NormalizeToPawnValue = 356;
-constexpr int  MaxHashMB            = Is64Bit ? 33554432 : 2048;
+constexpr auto StartFEN  = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+constexpr int  MaxHashMB = Is64Bit ? 33554432 : 2048;
+
+
+namespace NN = Eval::NNUE;
+
 
 UCI::UCI(int argc, char** argv) :
+    networks(NN::Networks(
+      NN::NetworkBig({EvalFileDefaultNameBig, "None", ""}, NN::EmbeddedNNUEType::BIG),
+      NN::NetworkSmall({EvalFileDefaultNameSmall, "None", ""}, NN::EmbeddedNNUEType::SMALL))),
     cli(argc, argv) {
-
-    evalFiles = {{Eval::NNUE::Big, {"EvalFile", EvalFileDefaultNameBig, "None", ""}},
-                 {Eval::NNUE::Small, {"EvalFileSmall", EvalFileDefaultNameSmall, "None", ""}}};
-
 
     options["Debug Log File"] << Option("", [](const Option& o) { start_logger(o); });
 
     options["Threads"] << Option(1, 1, 1024, [this](const Option&) {
-        threads.set({options, threads, tt});
+        threads.set({options, threads, tt, networks});
     });
 
     options["Hash"] << Option(16, 1, MaxHashMB, [this](const Option& o) {
@@ -77,14 +80,17 @@ UCI::UCI(int argc, char** argv) :
     options["SyzygyPath"] << Option("<empty>", [](const Option& o) { Tablebases::init(o); });
     options["Syzygy50MoveRule"] << Option(true);
     options["SyzygyProbeLimit"] << Option(7, 0, 7);
-    options["EvalFile"] << Option(EvalFileDefaultNameBig, [this](const Option&) {
-        evalFiles = Eval::NNUE::load_networks(cli.binaryDirectory, options, evalFiles);
+    options["EvalFile"] << Option(EvalFileDefaultNameBig, [this](const Option& o) {
+        networks.big.load(cli.binaryDirectory, o);
     });
-    options["EvalFileSmall"] << Option(EvalFileDefaultNameSmall, [this](const Option&) {
-        evalFiles = Eval::NNUE::load_networks(cli.binaryDirectory, options, evalFiles);
+    options["EvalFileSmall"] << Option(EvalFileDefaultNameSmall, [this](const Option& o) {
+        networks.small.load(cli.binaryDirectory, o);
     });
 
-    threads.set({options, threads, tt});
+    networks.big.load(cli.binaryDirectory, options["EvalFile"]);
+    networks.small.load(cli.binaryDirectory, options["EvalFileSmall"]);
+
+    threads.set({options, threads, tt, networks});
 
     search_clear();  // After threads are up
 }
@@ -159,7 +165,7 @@ void UCI::loop() {
             std::string                f;
             if (is >> std::skipws >> f)
                 filename = f;
-            Eval::NNUE::save_eval(filename, Eval::NNUE::Big, evalFiles);
+            networks.big.save(filename);
         }
         else if (token == "--help" || token == "help" || token == "--license" || token == "license")
             sync_cout
@@ -177,11 +183,9 @@ void UCI::loop() {
     } while (token != "quit" && cli.argc == 1);  // The command-line arguments are one-shot
 }
 
-void UCI::go(Position& pos, std::istringstream& is, StateListPtr& states) {
-
+Search::LimitsType UCI::parse_limits(const Position& pos, std::istream& is) {
     Search::LimitsType limits;
     std::string        token;
-    bool               ponderMode = false;
 
     limits.startTime = now();  // The search starts as early as possible
 
@@ -213,9 +217,17 @@ void UCI::go(Position& pos, std::istringstream& is, StateListPtr& states) {
         else if (token == "infinite")
             limits.infinite = 1;
         else if (token == "ponder")
-            ponderMode = true;
+            limits.ponderMode = true;
 
-    Eval::NNUE::verify(options, evalFiles);
+    return limits;
+}
+
+void UCI::go(Position& pos, std::istringstream& is, StateListPtr& states) {
+
+    Search::LimitsType limits = parse_limits(pos, is);
+
+    networks.big.verify(options["EvalFile"]);
+    networks.small.verify(options["EvalFileSmall"]);
 
     if (limits.perft)
     {
@@ -223,7 +235,7 @@ void UCI::go(Position& pos, std::istringstream& is, StateListPtr& states) {
         return;
     }
 
-    threads.start_thinking(options, pos, states, limits, ponderMode);
+    threads.start_thinking(options, pos, states, limits);
 }
 
 void UCI::bench(Position& pos, std::istream& args, StateListPtr& states) {
@@ -281,9 +293,11 @@ void UCI::trace_eval(Position& pos) {
     Position     p;
     p.set(pos.fen(), options["UCI_Chess960"], &states->back());
 
-    Eval::NNUE::verify(options, evalFiles);
+    networks.big.verify(options["EvalFile"]);
+    networks.small.verify(options["EvalFileSmall"]);
 
-    sync_cout << "\n" << Eval::trace(p) << sync_endl;
+
+    sync_cout << "\n" << Eval::trace(p, networks) << sync_endl;
 }
 
 void UCI::search_clear() {
@@ -327,19 +341,71 @@ void UCI::position(Position& pos, std::istringstream& is, StateListPtr& states) 
     }
 }
 
-int UCI::to_cp(Value v) { return 100 * v / PawnConversionFactor; }
+namespace {
+std::pair<double, double> win_rate_params(const Position& pos) {
 
-std::string UCI::value(Value v) {
+    int material = pos.count<PAWN>() + 3 * pos.count<KNIGHT>() + 3 * pos.count<BISHOP>()
+                 + 5 * pos.count<ROOK>() + 9 * pos.count<QUEEN>();
+
+    // The fitted model only uses data for material counts in [10, 78], and is anchored at count 58.
+    double m = std::clamp(material, 10, 78) / 58.0;
+
+    // Return a = p_a(material) and b = p_b(material), see github.com/official-stockfish/WDL_model
+    constexpr double as[] = {-185.71965483, 504.85014385, -438.58295743, 474.04604627};
+    constexpr double bs[] = {89.23542728, -137.02141296, 73.28669021, 47.53376190};
+
+    double a = (((as[0] * m + as[1]) * m + as[2]) * m) + as[3];
+    double b = (((bs[0] * m + bs[1]) * m + bs[2]) * m) + bs[3];
+
+    return {a, b};
+}
+
+// The win rate model is 1 / (1 + exp((a - eval) / b)), where a = p_a(material) and b = p_b(material).
+// It fits the LTC fishtest statistics rather accurately.
+int win_rate_model(Value v, const Position& pos) {
+
+    auto [a, b] = win_rate_params(pos);
+
+    // Return the win rate in per mille units, rounded to the nearest integer.
+    return int(0.5 + 1000 / (1 + std::exp((a - double(v)) / b)));
+}
+}
+
+std::string UCI::to_score(Value v, const Position& pos) {
     assert(-VALUE_INFINITE < v && v < VALUE_INFINITE);
 
     std::stringstream ss;
 
     if (std::abs(v) < VALUE_MATE_IN_MAX_PLY)
     {
-        ss << "cp " << to_cp(v);
+        ss << "cp " << to_cp(v, pos);
     }
     else
         ss << "mate " << (v > 0 ? VALUE_MATE - v + 1 : -VALUE_MATE - v) / 2;
+
+    return ss.str();
+}
+
+// Turns a Value to an integer centipawn number,
+// without treatment of mate and similar special scores.
+int UCI::to_cp(Value v, const Position& pos) {
+
+    // In general, the score can be defined via the the WDL as
+    // (log(1/L - 1) - log(1/W - 1)) / ((log(1/L - 1) + log(1/W - 1))
+    // Based on our win_rate_model, this simply yields v / a.
+
+    auto [a, b] = win_rate_params(pos);
+
+    return std::round(100 * int(v) / a);
+}
+
+std::string UCI::wdl(Value v, const Position& pos) {
+    std::stringstream ss;
+
+    int wdl_w = win_rate_model(v, pos);
+    int wdl_l = win_rate_model(-v, pos);
+    int wdl_d = 1000 - wdl_w - wdl_l;
+    ss << " wdl " << wdl_w << " " << wdl_d << " " << wdl_l;
 
     return ss.str();
 }
@@ -369,41 +435,6 @@ std::string UCI::move(Move m, bool chess960) {
     return move;
 }
 
-namespace {
-// The win rate model returns the probability of winning (in per mille units) given an
-// eval and a game ply. It fits the LTC fishtest statistics rather accurately.
-int win_rate_model(Value v, int ply) {
-
-    // The fitted model only uses data for moves in [8, 120], and is anchored at move 32.
-    double m = std::clamp(ply / 2 + 1, 8, 120) / 32.0;
-
-    // The coefficients of a third-order polynomial fit is based on the fishtest data
-    // for two parameters that need to transform eval to the argument of a logistic
-    // function.
-    constexpr double as[] = {-1.06249702, 7.42016937, 0.89425629, 348.60356174};
-    constexpr double bs[] = {-5.33122190, 39.57831533, -90.84473771, 123.40620748};
-
-    // Enforce that NormalizeToPawnValue corresponds to a 50% win rate at move 32.
-    static_assert(NormalizeToPawnValue == int(0.5 + as[0] + as[1] + as[2] + as[3]));
-
-    double a = (((as[0] * m + as[1]) * m + as[2]) * m) + as[3];
-    double b = (((bs[0] * m + bs[1]) * m + bs[2]) * m) + bs[3];
-
-    // Return the win rate in per mille units, rounded to the nearest integer.
-    return int(0.5 + 1000 / (1 + std::exp((a - double(v)) / b)));
-}
-}
-
-std::string UCI::wdl(Value v, int ply) {
-    std::stringstream ss;
-
-    int wdl_w = win_rate_model(v, ply);
-    int wdl_l = win_rate_model(-v, ply);
-    int wdl_d = 1000 - wdl_w - wdl_l;
-    ss << " wdl " << wdl_w << " " << wdl_d << " " << wdl_l;
-
-    return ss.str();
-}
 
 Move UCI::to_move(const Position& pos, std::string& str) {
     if (str.length() == 5)
