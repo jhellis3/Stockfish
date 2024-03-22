@@ -33,6 +33,10 @@ jobs:
             config: {compiler: aarch64-linux-android21-clang++}
           - binaries: armv7-neon
             config: {compiler: aarch64-linux-android21-clang++}
+          - binaries: armv7
+            config: {compiler: armv7a-linux-androideabi21-clang++}
+          - binaries: armv7-neon
+            config: {compiler: armv7a-linux-androideabi21-clang++}
     defaults:
       run:
         working-directory: src

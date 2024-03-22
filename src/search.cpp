@@ -598,16 +598,16 @@ Value Search::Worker::search(
 
                 int drawScore = tbConfig.useRule50 ? 1 : 0;
 
-                int centiPly = PawnConversionFactor * ss->ply / 100;
+                int centiPly = tbConversionFactor * ss->ply / 100;
 
-                Value tbValue =    v < -drawScore ? -VALUE_TB_WIN + (10 * PawnConversionFactor * (v == -1)) + centiPly + PawnConversionFactor * popcount(pos.pieces( pos.side_to_move()))
-                                 : v >  drawScore ?  VALUE_TB_WIN - (10 * PawnConversionFactor * (v ==  1)) - centiPly - PawnConversionFactor * popcount(pos.pieces(~pos.side_to_move()))
+                Value tbValue =    v < -drawScore ? -VALUE_TB_WIN + (10 * tbConversionFactor * (v == -1)) + centiPly + tbConversionFactor * popcount(pos.pieces( pos.side_to_move()))
+                                 : v >  drawScore ?  VALUE_TB_WIN - (10 * tbConversionFactor * (v ==  1)) - centiPly - tbConversionFactor * popcount(pos.pieces(~pos.side_to_move()))
                                  : v < 0 ? Value(-56) : VALUE_DRAW;
 
                 if (    abs(v) <= drawScore
                     || !ss->ttHit
-                    || (v < -drawScore && beta  > tbValue + 19)
-                    || (v >  drawScore && alpha < tbValue - 19))
+                    || (v < -drawScore && alpha > tbValue)
+                    || (v >  drawScore && alpha < VALUE_MAX_EVAL))
                 {
                     tte->save(posKey, tbValue, ss->ttPv, v > drawScore ? BOUND_LOWER : v < -drawScore ? BOUND_UPPER : BOUND_EXACT,
                               v == 0 ? MAX_PLY : depth, Move::none(), VALUE_NONE, tt.generation());
@@ -1230,7 +1230,7 @@ Value Search::Worker::search(
             RootMove& rm =
               *std::find(thisThread->rootMoves.begin(), thisThread->rootMoves.end(), move);
 
-            if (abs(value) < VALUE_TB_WIN - 7 * PawnConversionFactor)
+            if (abs(value) < VALUE_MAX_EVAL)
                 rm.averageScore = rm.averageScore != -VALUE_INFINITE ? (2 * value + rm.averageScore) / 3 : value;
             else
                 rm.averageScore = value;
@@ -1298,8 +1298,8 @@ Value Search::Worker::search(
                     if (   depth > 2
                         && depth < 12
                         && !gameCycle
-                        && beta  <  VALUE_MAX_EVAL / 2
-                        && alpha > -VALUE_MAX_EVAL / 2)
+                        && beta  <  VALUE_MAX_EVAL
+                        && alpha > -VALUE_MAX_EVAL)
                         depth -= 1;
 
                     assert(depth > 0);
@@ -1861,7 +1861,7 @@ std::string SearchManager::pv(const Search::Worker&     worker,
         if (v == -VALUE_INFINITE)
             v = VALUE_ZERO;
 
-        bool tb = worker.tbConfig.rootInTB && std::abs(v) < VALUE_TB_WIN - 6 * PawnConversionFactor;
+        bool tb = worker.tbConfig.rootInTB && std::abs(v) < VALUE_MAX_EVAL;
 
         v       = tb ? rootMoves[i].tbScore : v;
 

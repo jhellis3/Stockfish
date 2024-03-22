@@ -376,9 +376,15 @@ std::string UCI::to_score(Value v, const Position& pos) {
 
     std::stringstream ss;
 
-    if (std::abs(v) < VALUE_MATE_IN_MAX_PLY)
+
+
+    if (std::abs(v) < VALUE_MAX_EVAL)
     {
         ss << "cp " << to_cp(v, pos);
+    }
+    else if (std::abs(v) < VALUE_MATE_IN_MAX_PLY)
+    {
+        ss << "cp " << 100 * v / tbConversionFactor;
     }
     else
         ss << "mate " << (v > 0 ? VALUE_MATE - v + 1 : -VALUE_MATE - v) / 2;
