@@ -50,13 +50,13 @@ Value Eval::evaluate(const Eval::NNUE::Networks& networks, const Position& pos) 
     assert(!pos.checkers());
 
     int  simpleEval = simple_eval(pos, pos.side_to_move());
-    int  r50        = std::min(96, pos.rule50_count());
+    int  r50        = std::min(93, pos.rule50_count());
     bool smallNet   = std::abs(simpleEval) > SmallNetThreshold;
 
     Value v = smallNet ? networks.small.evaluate(pos, true, false)
                        : networks.big.evaluate(pos, true, false);
 
-    v = v * (9400 -  (r50 * r50)) / 10000;
+    v = v * ((smallNet ? 9900 : 8800) -  (r50 * r50)) / 10000;
 
     // Do not return evals greater than a TB result
     v = std::clamp(v, -VALUE_MAX_EVAL, VALUE_MAX_EVAL);
