@@ -465,7 +465,7 @@ Value Search::Worker::search(
     bool    capture, moveCountPruning, opponentWorsening,
             ttCapture, kingDanger, ourMove, nullParity;
     Piece   movedPiece;
-    int     moveCount, captureCount, quietCount;
+    int     moveCount, captureCount, quietCount, r50Count;
 
     // Step 1. Initialize node
     Worker* thisThread  = this;
@@ -480,6 +480,7 @@ Value Search::Worker::search(
     nullParity          = (ourMove == thisThread->nmpSide);
     ss->secondaryLine   = false;
     ss->mainLine        = false;
+    r50Count            = pos.rule50_count();
 
     // Check for the available remaining time
     if (is_mainthread())
@@ -498,6 +499,7 @@ Value Search::Worker::search(
     posKey = pos.key();
     tte = tt.probe(posKey, ss->ttHit);
     ttValue = ss->ttHit ? value_from_tt(tte->value(), ss->ply) : VALUE_NONE;
+    ttValue = (abs(ttValue) > VALUE_MAX_EVAL || r50Count < 14) ? ttValue : ((113 - r50Count) * ttValue / 100);
     ttDepth = tte->depth();
     ttBound = tte->bound();
     ttMove =  rootNode ? thisThread->rootMoves[thisThread->pvIdx].pv[0]
@@ -555,6 +557,8 @@ Value Search::Worker::search(
     if (  !PvNode
         && !excludedMove
         && !gameCycle
+        && !(ss-1)->mainLine
+        && (ourMove || !(ss-1)->secondaryLine)
         && ttDepth > depth
         && ttValue != VALUE_NONE // Possible in case of TT access race or if !ttHit
         && (ttBound & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
@@ -582,7 +586,7 @@ Value Search::Worker::search(
         int piecesCount = popcount(pos.pieces());
 
         if (    piecesCount <= tbConfig.cardinality
-            &&  pos.rule50_count() == 0
+            &&  r50Count == 0
             && !pos.can_castle(ANY_CASTLING))
         {
             TB::ProbeState err;
@@ -829,7 +833,8 @@ Value Search::Worker::search(
    probCutBeta = beta + 410;
    if (    ss->inCheck
         && !PvNode
-        && ttCapture
+        &&  ttCapture
+        &&  ourMove
         && !gameCycle
         && !kingDanger
         && !(ss-1)->secondaryLine
@@ -1405,7 +1410,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
     Bound    ttBound;
     Value    bestValue, value, ttValue, futilityValue, futilityBase;
     bool     pvHit, givesCheck, capture, gameCycle;
-    int      moveCount;
+    int      moveCount, r50Count;
     Color    us = pos.side_to_move();
 
     // Step 1. Initialize node
@@ -1420,6 +1425,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
     ss->inCheck        = pos.checkers();
     moveCount          = 0;
     gameCycle          = false;
+    r50Count            = pos.rule50_count();
 
     thisThread->nodes++;
 
@@ -1455,6 +1461,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
     posKey  = pos.key();
     tte     = tt.probe(posKey, ss->ttHit);
     ttValue = ss->ttHit ? value_from_tt(tte->value(), ss->ply) : VALUE_NONE;
+    ttValue = (abs(ttValue) > VALUE_MAX_EVAL || r50Count < 14) ? ttValue : ((113 - r50Count) * ttValue / 100);
     ttBound = tte->bound();
     ttMove  = ss->ttHit ? tte->move() : Move::none();
     pvHit   = ss->ttHit && tte->is_pv();

@@ -1025,8 +1025,8 @@ Key Position::key_after(Move m) const {
 
     k ^= Zobrist::psq[pc][to] ^ Zobrist::psq[pc][from];
 
-    return (st->rule50 < 13 || captured || type_of(pc) == PAWN)
-        ? k : st->rule50 < 85 ? k ^ make_key((st->rule50 - 13) / 8) : k ^ make_key(st->rule50 + 1);
+    return (st->rule50 < 100 || captured || type_of(pc) == PAWN)
+        ? k : k ^ make_key(101);
 }
 
 
