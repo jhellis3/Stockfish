@@ -43,7 +43,7 @@ void TTEntry::save(
     // Overwrite less valuable entries (cheapest checks first)
     if (   b == BOUND_EXACT
         || k != key
-        || d - DEPTH_OFFSET + 3 * pv >= depth8)
+        || d - DEPTH_OFFSET + 2 * pv >= depth8 - 2)
     {
         assert(d > DEPTH_OFFSET);
         assert(d <= MAX_PLY);
