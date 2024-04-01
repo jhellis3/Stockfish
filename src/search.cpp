@@ -1078,14 +1078,14 @@ Value Search::Worker::search(
             value = search<NonPV>(pos, ss, singularBeta - 1, singularBeta, singularDepth, cutNode);
             ss->excludedMove = Move::none();
 
-            if (value < singularBeta)
+            if (value < singularBeta && (ttValue > beta - 128 || !ourMove))
             {
                 // Avoid search explosion by limiting the number of double extensions
                 if (  !PvNode
                     && value < singularBeta - 22
                     && ss->multipleExtensions < 9) // watch for search explosion
                 {
-                    extension = 2 + !ttCapture;
+                    extension = 2;
                     depth += depth < 14;
                 }
                 else if (   PvNode && !ttCapture && ss->multipleExtensions <= 5
@@ -1100,15 +1100,17 @@ Value Search::Worker::search(
             // and if after excluding the ttMove with a reduced search we fail high over the original beta,
             // we assume this expected cut-node is not singular (multiple moves fail high),
             // and we can prune the whole subtree by returning a softbound.
-            else if (!PvNode)
+            else if (value >= singularBeta)
             {
                 if (ttValue >= beta)
-                    return ttValue;
+                {
+                    if (value >= beta)
+                        return ttValue;
+                }
 
-                // If the eval of ttMove is less than alpha and value, we reduce it (negative extension)
-                // Add ttValue <= value?
-                else if (!gameCycle && !kingDangerThem && alpha < VALUE_MAX_EVAL)
-                    extension = (cutNode && (ss-1)->moveCount > 1 && !(ss-1)->secondaryLine && depth < 19) ? -2 : -1;
+                // Reduce non-singular moves where we expect to fail low
+                else if (ourMove && !gameCycle && !kingDangerThem && alpha < VALUE_MAX_EVAL && ttValue < alpha - 128)
+                    extension = (cutNode && (ss-1)->moveCount > 1 && !(ss-1)->secondaryLine) ? -2 : -1;
             }
         }
 
