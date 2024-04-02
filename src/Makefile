@@ -125,7 +125,7 @@ ifeq ($(ARCH), $(filter $(ARCH), \
                  x86-64-vnni512 x86-64-vnni256 x86-64-avx512 x86-64-avxvnni x86-64-bmi2 \
                  x86-64-avx2 x86-64-sse41-popcnt x86-64-modern x86-64-ssse3 x86-64-sse3-popcnt \
                  x86-64 x86-32-sse41-popcnt x86-32-sse2 x86-32 ppc-64 ppc-32 e2k \
-                 armv7 armv7-neon armv8 armv8-dotprod apple-silicon general-64 general-32 riscv64 loongarch64))
+                 armv8 armv8-dotprod apple-silicon general-64 general-32 riscv64 loongarch64))
    SUPPORTED_ARCH=true
 else
    SUPPORTED_ARCH=false
@@ -302,22 +302,6 @@ ifeq ($(ARCH),general-64)
 	arch = any
 endif
 
-ifeq ($(ARCH),armv7)
-	arch = armv7
-	prefetch = yes
-	bits = 32
-	arm_version = 7
-endif
-
-ifeq ($(ARCH),armv7-neon)
-	arch = armv7
-	prefetch = yes
-	popcnt = yes
-	neon = yes
-	bits = 32
-	arm_version = 7
-endif
-
 ifeq ($(ARCH),armv8)
 	arch = armv8
 	prefetch = yes
@@ -400,7 +384,7 @@ ifeq ($(COMP),gcc)
 	CXX=g++
 	CXXFLAGS += -pedantic -Wextra -Wshadow -Wmissing-declarations
 
-	ifeq ($(arch),$(filter $(arch),armv7 armv8 riscv64))
+	ifeq ($(arch),$(filter $(arch), armv8 riscv64))
 		ifeq ($(OS),Android)
 			CXXFLAGS += -m$(bits)
 			LDFLAGS += -m$(bits)
@@ -413,10 +397,6 @@ ifeq ($(COMP),gcc)
 	else
 		CXXFLAGS += -m$(bits)
 		LDFLAGS += -m$(bits)
-	endif
-
-	ifeq ($(arch),$(filter $(arch),armv7))
-		LDFLAGS += -latomic
 	endif
 
 	ifneq ($(KERNEL),Darwin)
@@ -472,7 +452,7 @@ ifeq ($(COMP),clang)
 	endif
 	endif
 
-	ifeq ($(arch),$(filter $(arch),armv7 armv8 riscv64))
+	ifeq ($(arch),$(filter $(arch), armv8 riscv64))
 		ifeq ($(OS),Android)
 			CXXFLAGS += -m$(bits)
 			LDFLAGS += -m$(bits)
@@ -504,15 +484,6 @@ endif
 ifeq ($(COMP),ndk)
 	CXXFLAGS += -stdlib=libc++ -fPIE
 	comp=clang
-	ifeq ($(arch),armv7)
-		CXX=armv7a-linux-androideabi16-clang++
-		CXXFLAGS += -mthumb -march=armv7-a -mfloat-abi=softfp -mfpu=neon
-		ifneq ($(shell which arm-linux-androideabi-strip 2>/dev/null),)
-			STRIP=arm-linux-androideabi-strip
-		else
-			STRIP=llvm-strip
-		endif
-	endif
 	ifeq ($(arch),armv8)
 		CXX=aarch64-linux-android21-clang++
 		ifneq ($(shell which aarch64-linux-android-strip 2>/dev/null),)
@@ -600,7 +571,7 @@ ifeq ($(optimize),yes)
 
 	ifeq ($(comp),gcc)
 		ifeq ($(OS), Android)
-			CXXFLAGS += -fno-gcse -mthumb -march=armv7-a -mfloat-abi=softfp
+			CXXFLAGS += -fno-gcse -mthumb -mfloat-abi=softfp
 		endif
 	endif
 
@@ -639,7 +610,7 @@ else
 endif
 
 ifeq ($(popcnt),yes)
-	ifeq ($(arch),$(filter $(arch),ppc64 armv7 armv8 arm64))
+	ifeq ($(arch),$(filter $(arch),ppc64 armv8 arm64))
 		CXXFLAGS += -DUSE_POPCNT
 	else
 		CXXFLAGS += -msse3 -mpopcnt -DUSE_POPCNT
@@ -830,8 +801,6 @@ help:
 	@echo "x86-32                  > x86 32-bit generic (with mmx compile support)"
 	@echo "ppc-64                  > PPC 64-bit"
 	@echo "ppc-32                  > PPC 32-bit"
-	@echo "armv7                   > ARMv7 32-bit"
-	@echo "armv7-neon              > ARMv7 32-bit with popcnt and neon"
 	@echo "armv8                   > ARMv8 64-bit with popcnt and neon"
 	@echo "armv8-dotprod           > ARMv8 64-bit with popcnt, neon and dot product support"
 	@echo "e2k                     > Elbrus 2000"
@@ -1029,7 +998,7 @@ config-sanity: net
 	@test "$(SUPPORTED_ARCH)" = "true"
 	@test "$(arch)" = "any" || test "$(arch)" = "x86_64" || test "$(arch)" = "i386" || \
 	 test "$(arch)" = "ppc64" || test "$(arch)" = "ppc" || test "$(arch)" = "e2k" || \
-	 test "$(arch)" = "armv7" || test "$(arch)" = "armv8" || test "$(arch)" = "arm64" || test "$(arch)" = "riscv64" || test "$(arch)" = "loongarch64"
+	 test "$(arch)" = "armv8" || test "$(arch)" = "arm64" || test "$(arch)" = "riscv64" || test "$(arch)" = "loongarch64"
 	@test "$(bits)" = "32" || test "$(bits)" = "64"
 	@test "$(prefetch)" = "yes" || test "$(prefetch)" = "no"
 	@test "$(popcnt)" = "yes" || test "$(popcnt)" = "no"
@@ -1045,7 +1014,7 @@ config-sanity: net
 	@test "$(vnni512)" = "yes" || test "$(vnni512)" = "no"
 	@test "$(neon)" = "yes" || test "$(neon)" = "no"
 	@test "$(comp)" = "gcc" || test "$(comp)" = "icx" || test "$(comp)" = "mingw" || test "$(comp)" = "clang" \
-	|| test "$(comp)" = "armv7a-linux-androideabi16-clang"  || test "$(comp)" = "aarch64-linux-android21-clang"
+	 || test "$(comp)" = "aarch64-linux-android21-clang"
 
 $(EXE): $(OBJS)
 	+$(CXX) -o $@ $(OBJS) $(LDFLAGS)
