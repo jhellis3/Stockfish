@@ -50,13 +50,10 @@ Value Eval::evaluate(const Eval::NNUE::Networks& networks, const Position& pos, 
     assert(!pos.checkers());
 
     int  simpleEval = simple_eval(pos, pos.side_to_move());
-    bool smallNet   = std::abs(simpleEval) > SmallNetThreshold;
-    bool psqtOnly   = std::abs(simpleEval) > PsqtOnlyThreshold;
     int  nnueComplexity;
     int  v;
 
-    Value nnue = smallNet ? networks.small.evaluate(pos, true, &nnueComplexity, psqtOnly)
-                          : networks.big.evaluate(pos, true, &nnueComplexity, false);
+    Value nnue = networks.big.evaluate(pos, true, &nnueComplexity, false);
 
     const auto adjustEval = [&](int optDiv, int nnueDiv, int pawnCountConstant, int pawnCountMul,
                                 int npmConstant, int evalDiv, int shufflingConstant,
@@ -75,12 +72,7 @@ Value Eval::evaluate(const Eval::NNUE::Networks& networks, const Position& pos, 
         v             = v * (shufflingConstant - shuffling) / shufflingDiv;
     };
 
-    if (!smallNet)
-        adjustEval(513, 32395, 919, 11, 145, 1036, 178, 204);
-    else if (psqtOnly)
-        adjustEval(517, 32857, 908, 7, 155, 1019, 224, 238);
-    else
-        adjustEval(499, 32793, 903, 9, 147, 1067, 208, 211);
+    adjustEval(513, 32395, 919, 11, 145, 1036, 178, 204);
 
     // Guarantee evaluation does not hit the tablebase range
     v = std::clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
