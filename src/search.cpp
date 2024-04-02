@@ -54,6 +54,9 @@ using namespace Search;
 
 namespace {
 
+static constexpr double EvalLevel[10] = {1.043, 1.017, 0.952, 1.009, 0.971,
+                                         1.002, 0.992, 0.947, 1.046, 1.001};
+
 // Futility margin
 Value futility_margin(Depth d, bool noTtCutNode, bool improving, bool oppWorsening) {
     Value futilityMult       = 118 - 44 * noTtCutNode;
@@ -1036,12 +1039,14 @@ Value Search::Worker::search(
 
                 lmrDepth += history / 5637;
 
+                Value futilityValue =
+                  ss->staticEval + (bestValue < ss->staticEval - 59 ? 141 : 58) + 125 * lmrDepth;
+
                 // Futility pruning: parent node (~13 Elo)
                 if (   !ss->inCheck
                     && lmrDepth < (7 * (1 + !ourMove))
                     && history < 20500 - 3875 * (depth - 1)
-                    && ss->staticEval + (bestValue < ss->staticEval - 59 ? 141 : 58)
-                       + 125 * lmrDepth <= alpha)
+                    && futilityValue <= alpha)
                     continue;
 
                 lmrDepth = std::max(lmrDepth, 0);
@@ -1102,14 +1107,11 @@ Value Search::Worker::search(
             // and we can prune the whole subtree by returning a softbound.
             else if (value >= singularBeta)
             {
-                if (ttValue >= beta)
-                {
-                    if (value >= beta)
+                if (ttValue >= beta && value >= beta)
                         return ttValue;
-                }
 
                 // Reduce non-singular moves where we expect to fail low
-                else if (ourMove && !gameCycle && !kingDangerThem && alpha < VALUE_MAX_EVAL && ttValue < alpha - 128)
+                else if (ourMove && !gameCycle && !kingDangerThem && alpha < VALUE_MAX_EVAL && ttValue < beta - 128)
                     extension = (cutNode && (ss-1)->moveCount > 1 && !(ss-1)->secondaryLine) ? -2 : -1;
             }
         }
