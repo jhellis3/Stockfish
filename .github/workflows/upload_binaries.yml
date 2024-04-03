@@ -96,11 +96,11 @@ jobs:
           echo "CHANGES=$CHANGES" >> $GITHUB_ENV
 
       - name: Prerelease
-        if: github.ref_name == 'master' && env.CHANGES == '0'
+        if: github.ref_name == 'crystal' && env.CHANGES == '0'
         continue-on-error: true
         uses: softprops/action-gh-release@4634c16e79c963813287e889244c50009e7f0981
         with:
-          name: Stockfish dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
-          tag_name: stockfish-dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
+          name: Crystal dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
+          tag_name: crystal-dev-${{ env.COMMIT_DATE }}-${{ env.COMMIT_SHA }}
           prerelease: true
-          files: stockfish-${{ matrix.config.simple_name }}-${{ matrix.binaries }}.${{ matrix.config.archive_ext }}
+          files: crystal-${{ matrix.config.simple_name }}-${{ matrix.binaries }}.${{ matrix.config.archive_ext }}
