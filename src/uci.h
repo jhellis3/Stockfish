@@ -43,6 +43,7 @@ class UCI {
     void loop();
 
     static int         to_cp(Value v, const Position& pos);
+    static int         to_int(Value v, const Position& pos);
     static std::string to_score(Value v, const Position& pos);
     static std::string square(Square s);
     static std::string move(Move m, bool chess960);

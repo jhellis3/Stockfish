@@ -197,6 +197,7 @@ void Search::Worker::iterative_deepening() {
 
     Value  alpha, beta;
     Value  bestValue     = -VALUE_INFINITE;
+    Color  us            = rootPos.side_to_move();
     double timeReduction = 1, totBestMoveChanges = 0;
     int    delta, iterIdx                        = 0;
 
@@ -227,6 +228,9 @@ void Search::Worker::iterative_deepening() {
     }
 
     size_t multiPV = size_t(options["MultiPV"]);
+
+    contempt[us] = int(options["Contempt"]);
+    contempt[~us] = -contempt[us];
 
     multiPV = std::min(multiPV, rootMoves.size());
 
@@ -529,7 +533,7 @@ Value Search::Worker::search(
             return VALUE_DRAW;
 
         if (threads.stop.load(std::memory_order_relaxed) || ss->ply >= MAX_PLY)
-            return ss->ply >= MAX_PLY && !ss->inCheck ? evaluate(networks, pos)
+            return ss->ply >= MAX_PLY && !ss->inCheck ? evaluate(networks, pos, contempt[us])
                                                       : VALUE_DRAW;
 
         // Step 3. Mate distance pruning. Even if we mate at the next move our score
@@ -558,7 +562,6 @@ Value Search::Worker::search(
         && !excludedMove
         && !gameCycle
         && !(ss-1)->mainLine
-        && (ourMove || !(ss-1)->secondaryLine)
         && ttDepth > depth
         && ttValue != VALUE_NONE // Possible in case of TT access race or if !ttHit
         && (ttBound & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
@@ -646,7 +649,7 @@ Value Search::Worker::search(
         // Never assume anything about values stored in TT
         unadjustedStaticEval = tte->eval();
         if (unadjustedStaticEval == VALUE_NONE)
-            unadjustedStaticEval = evaluate(networks, pos);
+            unadjustedStaticEval = evaluate(networks, pos, contempt[us]);
         else if (PvNode)
             Eval::NNUE::hint_common_parent_position(pos, networks);
 
@@ -660,7 +663,7 @@ Value Search::Worker::search(
     }
     else
     {
-        unadjustedStaticEval = evaluate(networks, pos);
+        unadjustedStaticEval = evaluate(networks, pos, contempt[us]);
         ss->staticEval = eval = to_corrected_static_eval(unadjustedStaticEval, *thisThread, pos);
 
         // Static evaluation is saved as it was before adjustment by correction history
@@ -1103,10 +1106,10 @@ Value Search::Worker::search(
             // and if after excluding the ttMove with a reduced search we fail high over the original beta,
             // we assume this expected cut-node is not singular (multiple moves fail high),
             // and we can prune the whole subtree by returning a softbound.
-            else if (value >= singularBeta)
+            else if (value >= singularBeta && !PvNode)
             {
                 if (ttValue >= beta && value >= beta)
-                        return ttValue;
+                    return ttValue;
 
                 // Reduce non-singular moves where we expect to fail low
                 else if (ourMove && !gameCycle && !kingDangerThem && alpha < VALUE_MAX_EVAL && ttValue < beta - 128)
@@ -1449,7 +1452,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
 
     // Step 2. Check for an immediate draw or maximum ply reached
     if (ss->ply >= MAX_PLY)
-        return !ss->inCheck ? evaluate(networks, pos) : VALUE_DRAW;
+        return !ss->inCheck ? evaluate(networks, pos, contempt[us]) : VALUE_DRAW;
 
     if (alpha >= mate_in(ss->ply+1))
         return mate_in(ss->ply+1);
@@ -1488,7 +1491,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
             // Never assume anything about values stored in TT
             unadjustedStaticEval = tte->eval();
             if (unadjustedStaticEval == VALUE_NONE)
-                unadjustedStaticEval = evaluate(networks, pos);
+                unadjustedStaticEval = evaluate(networks, pos, contempt[us]);
             ss->staticEval = bestValue =
               to_corrected_static_eval(unadjustedStaticEval, *thisThread, pos);
 
@@ -1502,7 +1505,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
         {
             // In case of null move search, use previous static eval with a different sign
             unadjustedStaticEval = (ss - 1)->currentMove != Move::null()
-                                   ? evaluate(networks, pos)
+                                   ? evaluate(networks, pos, contempt[us])
                                    : -(ss - 1)->staticEval;
             ss->staticEval       = bestValue =
               to_corrected_static_eval(unadjustedStaticEval, *thisThread, pos);
@@ -1557,7 +1560,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
                 &&  futilityBase > -VALUE_MAX_EVAL
                 &&  move.type_of() != PROMOTION)
             {
-                if (moveCount > 2 + PvNode)
+                if (moveCount > 2)
                     continue;
 
                 futilityValue = futilityBase + PieceValue[pos.piece_on(move.to_sq())];

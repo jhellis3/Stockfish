@@ -73,6 +73,7 @@ UCI::UCI(int argc, char** argv) :
     options["Clean Search"] << Option(false);
     options["Ponder"] << Option(false);
     options["MultiPV"] << Option(1, 1, MAX_MOVES);
+    options["Contempt"] << Option(0, -100, 100);
     options["Move Overhead"] << Option(10, 0, 5000);
     options["nodestime"] << Option(0, 0, 10000);
     options["UCI_Chess960"] << Option(false);
@@ -414,6 +415,13 @@ int UCI::to_cp(Value v, const Position& pos) {
     auto [a, b] = win_rate_params(pos);
 
     return std::round(100 * int(v) / a);
+}
+
+int UCI::to_int(Value v, const Position& pos) {
+
+    auto [a, b] = win_rate_params(pos);
+
+    return std::round(a * int(v) / 100);
 }
 
 std::string UCI::wdl(Value v, const Position& pos) {

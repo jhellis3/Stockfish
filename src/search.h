@@ -237,7 +237,7 @@ class Worker {
 
     size_t                pvIdx, pvLast;
     std::atomic<uint64_t> nodes, tbHits, bestMoveChanges;
-    int                   selDepth;
+    int                   selDepth, contempt[2];
     bool                  nmpGuard, nmpGuardV, nmpSide;
 
     Position  rootPos;
