@@ -230,7 +230,7 @@ void Search::Worker::iterative_deepening() {
     size_t multiPV = size_t(options["MultiPV"]);
 
     contempt[us] = int(options["Contempt"]);
-    contempt[~us] = -contempt[us];
+    contempt[~us] = 0;
 
     multiPV = std::min(multiPV, rootMoves.size());
 
