@@ -56,9 +56,9 @@ Value Eval::evaluate(const Eval::NNUE::Networks& networks, const Position& pos, 
     Value v = smallNet ? networks.small.evaluate(pos, true, false)
                        : networks.big.evaluate(pos, true, false);
 
-    v += UCI::to_int(contempt, pos);
-
     v = v * ((smallNet ? 99 : 88) -  r50) / 100;
+
+    v += contempt;
 
     // Do not return evals greater than a TB result
     v = std::clamp(v, -VALUE_MAX_EVAL, VALUE_MAX_EVAL);

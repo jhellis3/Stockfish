@@ -73,7 +73,7 @@ UCI::UCI(int argc, char** argv) :
     options["Clean Search"] << Option(false);
     options["Ponder"] << Option(false);
     options["MultiPV"] << Option(1, 1, MAX_MOVES);
-    options["Contempt"] << Option(3, -100, 100);
+    options["Contempt"] << Option(20, 0, 100);
     options["Move Overhead"] << Option(10, 0, 5000);
     options["nodestime"] << Option(0, 0, 10000);
     options["UCI_Chess960"] << Option(false);

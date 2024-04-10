@@ -229,7 +229,7 @@ void Search::Worker::iterative_deepening() {
 
     size_t multiPV = size_t(options["MultiPV"]);
 
-    contempt[us] = int(options["Contempt"]);
+    int rootContempt = UCI::to_int(int(options["Contempt"]), rootPos);
     contempt[~us] = 0;
 
     multiPV = std::min(multiPV, rootMoves.size());
@@ -268,6 +268,11 @@ void Search::Worker::iterative_deepening() {
             Value avg   = rootMoves[pvIdx].averageScore;
             int momentum = int(avg) * avg / 12493;
             delta        = 10;
+
+            if (avg >= VALUE_DRAW)
+                contempt[us] = rootContempt;
+            else
+                contempt[us] = 0;
 
             if (avg > VALUE_MATE_IN_MAX_PLY)
                 alpha = VALUE_MATE_IN_MAX_PLY - MAX_PLY;
@@ -464,7 +469,7 @@ Value Search::Worker::search(
     Move    ttMove, move, excludedMove, bestMove;
     Depth   extension, newDepth, ttDepth;
     Bound   ttBound;
-    Value   bestValue, value, ttValue, eval, probCutBeta;
+    Value   bestValue, value, ttValue, eval, probCutBeta, drawValue;
     bool    givesCheck, improving, priorCapture, isMate, gameCycle;
     bool    capture, moveCountPruning, opponentWorsening,
             ttCapture, kingDanger, ourMove, nullParity;
@@ -485,6 +490,7 @@ Value Search::Worker::search(
     ss->secondaryLine   = false;
     ss->mainLine        = false;
     r50Count            = pos.rule50_count();
+    drawValue           = contempt[us];
 
     // Check for the available remaining time
     if (is_mainthread())
@@ -521,20 +527,20 @@ Value Search::Worker::search(
         // if the opponent had an alternative move earlier to this position.
         if (pos.has_game_cycle(ss->ply))
         {
-            if (VALUE_DRAW >= beta)
-                return VALUE_DRAW;
+            if (drawValue >= beta)
+                return drawValue;
 
             gameCycle = true;
-            alpha = std::max(alpha, VALUE_DRAW);
+            alpha = std::max(alpha, drawValue);
         }
 
         // Step 2. Check for aborted search and immediate draw
         if (pos.is_draw(ss->ply))
-            return VALUE_DRAW;
+            return drawValue;
 
         if (threads.stop.load(std::memory_order_relaxed) || ss->ply >= MAX_PLY)
             return ss->ply >= MAX_PLY && !ss->inCheck ? evaluate(networks, pos, contempt[us])
-                                                      : VALUE_DRAW;
+                                                      : drawValue;
 
         // Step 3. Mate distance pruning. Even if we mate at the next move our score
         // would be at best mate_in(ss->ply + 1), but if alpha is already bigger because
@@ -609,7 +615,7 @@ Value Search::Worker::search(
 
                 Value tbValue =    v < -drawScore ? -VALUE_TB_WIN + (10 * tbConversionFactor * (v == -1)) + centiPly + tbConversionFactor * popcount(pos.pieces( pos.side_to_move()))
                                  : v >  drawScore ?  VALUE_TB_WIN - (10 * tbConversionFactor * (v ==  1)) - centiPly - tbConversionFactor * popcount(pos.pieces(~pos.side_to_move()))
-                                 : v < 0 ? Value(-56) : VALUE_DRAW;
+                                 : v < 0 ? Value(-56) : drawValue;
 
                 if (    abs(v) <= drawScore
                     || !ss->ttHit
@@ -879,7 +885,7 @@ Value Search::Worker::search(
     bool gameCycleExtension =    gameCycle
                               && (   PvNode
                                   || (ss-1)->mainLine
-                                  || ((ss-1)->secondaryLine && thisThread->pvValue < VALUE_DRAW));
+                                  || ((ss-1)->secondaryLine && thisThread->pvValue < drawValue));
 
     bool kingDangerThem = ourMove && pos.king_danger(~us);
 
@@ -1342,7 +1348,7 @@ Value Search::Worker::search(
         bestValue = (bestValue * (depth + 2) + beta) / (depth + 3);
 
     if (!moveCount)
-        bestValue = excludedMove ? alpha : ss->inCheck ? mated_in(ss->ply) : VALUE_DRAW;
+        bestValue = excludedMove ? alpha : ss->inCheck ? mated_in(ss->ply) : drawValue;
 
     // If there is a move that produces search value greater than alpha we update the stats of searched moves
     else if (bestMove)
@@ -1413,7 +1419,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
     Move     ttMove, move, bestMove;
     Depth    ttDepth;
     Bound    ttBound;
-    Value    bestValue, value, ttValue, futilityValue, futilityBase;
+    Value    bestValue, value, ttValue, futilityValue, futilityBase, drawValue;
     bool     pvHit, givesCheck, capture, gameCycle;
     int      moveCount, r50Count;
     Color    us = pos.side_to_move();
@@ -1430,21 +1436,22 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
     ss->inCheck        = pos.checkers();
     moveCount          = 0;
     gameCycle          = false;
-    r50Count            = pos.rule50_count();
+    r50Count           = pos.rule50_count();
+    drawValue          = contempt[us];
 
     thisThread->nodes++;
 
     if (pos.has_game_cycle(ss->ply))
     {
-       if (VALUE_DRAW >= beta)
-           return VALUE_DRAW;
+       if (drawValue >= beta)
+           return drawValue;
 
-       alpha = std::max(alpha, VALUE_DRAW);
+       alpha = std::max(alpha, drawValue);
        gameCycle = true;
     }
 
     if (pos.is_draw(ss->ply))
-        return VALUE_DRAW;
+        return drawValue;
 
     // Used to send selDepth info to GUI (selDepth counts from 1, ply from 0)
     if (PvNode && thisThread->selDepth < ss->ply + 1)
@@ -1452,7 +1459,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
 
     // Step 2. Check for an immediate draw or maximum ply reached
     if (ss->ply >= MAX_PLY)
-        return !ss->inCheck ? evaluate(networks, pos, contempt[us]) : VALUE_DRAW;
+        return !ss->inCheck ? evaluate(networks, pos, contempt[us]) : drawValue;
 
     if (alpha >= mate_in(ss->ply+1))
         return mate_in(ss->ply+1);
