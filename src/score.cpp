@@ -33,14 +33,14 @@ Score::Score(Value v, const Position& pos) {
     {
         score = InternalUnits{UCIEngine::to_cp(v, pos)};
     }
-    else if (std::abs(v) < VALUE_MATE_IN_MAX_PLY)
+    else if (std::abs(v) <= VALUE_MATE_IN_MAX_PLY)
     {
-        score         = TBResult{100 * v / tbConversionFactor};
+        score = TBResult{100 * v / tbConversionFactor};
     }
     else
     {
         auto distance = VALUE_MATE - std::abs(v);
-        score         = (v > 0) ? Mate{distance} : Mate{-distance};
+        score = (v > 0) ? Mate{distance} : Mate{-distance};
     }
 }
 

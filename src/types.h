@@ -106,7 +106,7 @@ using Key      = uint64_t;
 using Bitboard = uint64_t;
 
 constexpr int MAX_MOVES = 256;
-constexpr int MAX_PLY   = 440;
+constexpr int MAX_PLY   = 420;
 
 enum Color {
     WHITE,
@@ -160,7 +160,7 @@ constexpr Value BishopValue = 825;
 constexpr Value RookValue   = 1276;
 constexpr Value QueenValue  = 2538;
 
-constexpr Value tbConversionFactor = 200;
+constexpr Value tbConversionFactor = VALUE_MATE_IN_MAX_PLY / 100;
 constexpr Value VALUE_TB_WIN         = 101 * tbConversionFactor;
 constexpr Value VALUE_MAX_EVAL       = VALUE_TB_WIN - 17 * tbConversionFactor;
 

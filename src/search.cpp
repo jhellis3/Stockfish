@@ -273,10 +273,7 @@ void Search::Worker::iterative_deepening() {
             else
                 contempt[us] = 0;
 
-            if (avg > VALUE_MATE_IN_MAX_PLY)
-                alpha = VALUE_MATE_IN_MAX_PLY - MAX_PLY;
-            else
-                alpha = std::max(avg - (delta + (avg < 0 ? momentum : 0)),-VALUE_INFINITE);
+            alpha = std::max(avg - (delta + (avg < 0 ? momentum : 0)),-VALUE_INFINITE);
 
             beta  = std::min(avg + (delta + (avg > 0 ? momentum : 0)), VALUE_INFINITE);
 
@@ -368,10 +365,10 @@ void Search::Worker::iterative_deepening() {
 
         // Have we found a "mate in x"?
         if (limits.mate && rootMoves[0].score == rootMoves[0].uciScore
-            && ((rootMoves[0].score >= VALUE_MATE_IN_MAX_PLY
+            && ((rootMoves[0].score > VALUE_MATE_IN_MAX_PLY
                  && VALUE_MATE - rootMoves[0].score <= 2 * limits.mate)
                 || (rootMoves[0].score != -VALUE_INFINITE
-                    && rootMoves[0].score <= VALUE_MATED_IN_MAX_PLY
+                    && rootMoves[0].score < VALUE_MATED_IN_MAX_PLY
                     && VALUE_MATE + rootMoves[0].score <= 2 * limits.mate)))
             threads.stop = true;
 
@@ -619,7 +616,7 @@ Value Search::Worker::search(
                 if (    abs(v) <= drawScore
                     || !ss->ttHit
                     || (v < -drawScore && alpha > tbValue)
-                    || (v >  drawScore && alpha < VALUE_MAX_EVAL))
+                    || (v >  drawScore && alpha < tbValue))
                 {
                     tte->save(posKey, tbValue, ss->ttPv, v > drawScore ? BOUND_LOWER : v < -drawScore ? BOUND_UPPER : BOUND_EXACT,
                               v == 0 ? MAX_PLY : depth, Move::none(), VALUE_NONE, tt.generation());
@@ -915,7 +912,6 @@ Value Search::Worker::search(
                       &&  ttDepth >= depth - 3
                       &&  depth >= 4 - (thisThread->completedDepth > 24) + 2 * (PvNode && tte->is_pv());
 
-
     bool doLMP =    !PvNode
                  && (lmPrunable || ss->ply > 2)
                  &&  pos.non_pawn_material(us);
@@ -1066,6 +1062,8 @@ Value Search::Worker::search(
         }
 
         // Step 15. Extensions (~100 Elo)
+        if (depth + ss->ply + 2 < MAX_PLY)
+        {
         if (gameCycleExtension)
             extension = 2;
 
@@ -1136,6 +1134,7 @@ Value Search::Worker::search(
                                                   [type_of(pos.piece_on(move.to_sq()))]
                           > 3807)
                 extension = 1;
+        }
         }
 
         // Add extension to new depth
@@ -1682,8 +1681,8 @@ Value value_to_tt(Value v, int ply) {
 
     assert(v != VALUE_NONE);
 
-    return  v > VALUE_MATE_IN_MAX_PLY  ? v + ply
-          : v < VALUE_MATED_IN_MAX_PLY ? v - ply : v;
+    return  v > VALUE_MATE_IN_MAX_PLY   ? v + ply
+          : v < VALUE_MATED_IN_MAX_PLY  ? v - ply : v;
   }
 
 
@@ -1695,9 +1694,9 @@ Value value_to_tt(Value v, int ply) {
 
   Value value_from_tt(Value v, int ply) {
 
-    return  v == VALUE_NONE             ? VALUE_NONE
-          : v >= VALUE_MATE_IN_MAX_PLY  ? v - ply
-          : v <= VALUE_MATED_IN_MAX_PLY ? v + ply : v;
+    return  v == VALUE_NONE            ? VALUE_NONE
+          : v > VALUE_MATE_IN_MAX_PLY  ? v - ply
+          : v < VALUE_MATED_IN_MAX_PLY ? v + ply : v;
   }
 
 // Adds current move and appends child pv[]

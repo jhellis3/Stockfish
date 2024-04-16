@@ -62,20 +62,20 @@ namespace Search {
 struct Stack {
     Move*           pv;
     PieceToHistory* continuationHistory;
-    int             ply;
+    uint16_t        ply;
     Move            currentMove;
     Move            excludedMove;
     Move            killers[2];
     Value           staticEval;
     int             statScore;
-    int             moveCount;
+    uint8_t         moveCount;
     bool            inCheck;
     bool            ttPv;
     bool            ttHit;
     bool            secondaryLine;
     bool            mainLine;
-    int             multipleExtensions;
-    int             cutoffCnt;
+    uint16_t        multipleExtensions;
+    uint16_t        cutoffCnt;
 };
 
 
