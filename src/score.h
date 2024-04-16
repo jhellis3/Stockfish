@@ -34,7 +34,7 @@ class Score {
         int plies;
     };
 
-    struct TBResult {
+    struct Tablebase {
         int value;
     };
 
@@ -61,7 +61,7 @@ class Score {
     }
 
    private:
-    std::variant<Mate, TBResult, InternalUnits> score;
+    std::variant<Mate, Tablebase, InternalUnits> score;
 };
 
 }

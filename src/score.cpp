@@ -35,7 +35,7 @@ Score::Score(Value v, const Position& pos) {
     }
     else if (std::abs(v) <= VALUE_MATE_IN_MAX_PLY)
     {
-        score = TBResult{100 * v / tbConversionFactor};
+        score = Tablebase{100 * v / tbConversionFactor};
     }
     else
     {
