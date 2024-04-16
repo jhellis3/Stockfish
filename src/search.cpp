@@ -26,8 +26,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
-#include <iostream>
-#include <sstream>
 #include <string>
 #include <utility>
 #include "bitboard.h"
