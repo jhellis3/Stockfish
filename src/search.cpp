@@ -117,9 +117,6 @@ Search::Worker::Worker(SharedState&                    sharedState,
 
 void Search::Worker::start_searching() {
 
-    // Initialize accumulator refresh entries
-    refreshTable.clear(networks);
-
     // Non-main threads go directly to iterative_deepening()
     if (!is_mainthread())
     {
@@ -441,6 +438,8 @@ void Search::Worker::clear() {
 
     for (size_t i = 1; i < reductions.size(); ++i)
         reductions[i] = int((20.14 + std::log(size_t(options["Threads"])) / 2) * std::log(i));
+
+    refreshTable.clear(networks);
 }
 
 
@@ -1005,20 +1004,22 @@ Value Search::Worker::search(
             if (   capture
                 || givesCheck)
             {
+                Piece capturedPiece = pos.piece_on(move.to_sq());
+                int   captHist =
+                  thisThread->captureHistory[movedPiece][move.to_sq()][type_of(capturedPiece)];
+
                 // Futility pruning for captures (~2 Elo)
                 if (!givesCheck && lmrDepth < 6 && !ss->inCheck)
                 {
-                    Piece capturedPiece = pos.piece_on(move.to_sq());
-                    Value futilityValue =
-                      ss->staticEval + 285 + 277 * lmrDepth + PieceValue[capturedPiece]
-                      + thisThread->captureHistory[movedPiece][move.to_sq()][type_of(capturedPiece)]
-                          / 7;
+                    Value futilityValue = ss->staticEval + 285 + 277 * lmrDepth
+                                        + PieceValue[capturedPiece] + captHist / 7;
                     if (futilityValue <= alpha)
                         continue;
                 }
 
                 // SEE based pruning for captures and checks (~11 Elo)
-                if (!pos.see_ge(move, -203 * depth))
+                int seeHist = std::clamp(captHist / 32, -199 * depth, 199 * depth);
+                if (!pos.see_ge(move, -203 * depth - seeHist))
                     continue;
             }
             else
