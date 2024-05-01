@@ -222,7 +222,11 @@ Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
 void UCIEngine::go(std::istringstream& is) {
 
     Search::LimitsType limits = parse_limits(is);
-    engine.go(limits);
+
+    if (limits.perft)
+        perft(limits);
+    else
+        engine.go(limits);
 }
 
 void UCIEngine::bench(std::istream& args) {
@@ -236,7 +240,7 @@ void UCIEngine::bench(std::istream& args) {
         on_update_full(i, options["UCI_ShowWDL"]);
     });
 
-    std::vector<std::string> list = setup_bench(engine.fen(), args);
+    std::vector<std::string> list = Benchmark::setup_bench(engine.fen(), args);
 
     num = count_if(list.begin(), list.end(),
                    [](const std::string& s) { return s.find("go ") == 0 || s.find("eval") == 0; });
@@ -254,8 +258,16 @@ void UCIEngine::bench(std::istream& args) {
                       << std::endl;
             if (token == "go")
             {
-                go(is);
-                engine.wait_for_search_finished();
+                Search::LimitsType limits = parse_limits(is);
+
+                if (limits.perft)
+                    nodes = perft(limits);
+                else
+                {
+                    engine.go(limits);
+                    engine.wait_for_search_finished();
+                }
+
                 nodes += nodesSearched;
                 nodesSearched = 0;
             }
@@ -289,6 +301,12 @@ void UCIEngine::bench(std::istream& args) {
 void UCIEngine::setoption(std::istringstream& is) {
     engine.wait_for_search_finished();
     engine.get_options().setoption(is);
+}
+
+std::uint64_t UCIEngine::perft(const Search::LimitsType& limits) {
+    auto nodes = engine.perft(engine.fen(), limits.perft, engine.get_options()["UCI_Chess960"]);
+    sync_cout << "\nNodes searched: " << nodes << "\n" << sync_endl;
+    return nodes;
 }
 
 void UCIEngine::position(std::istringstream& is) {
@@ -333,8 +351,8 @@ WinRateParams win_rate_params(const Position& pos) {
     double m = std::clamp(material, 10, 78) / 58.0;
 
     // Return a = p_a(material) and b = p_b(material), see github.com/official-stockfish/WDL_model
-    constexpr double as[] = {-185.71965483, 504.85014385, -438.58295743, 474.04604627};
-    constexpr double bs[] = {89.23542728, -137.02141296, 73.28669021, 47.53376190};
+    constexpr double as[] = {-150.77043883, 394.96159472, -321.73403766, 406.15850091};
+    constexpr double bs[] = {62.33245393, -91.02264855, 45.88486850, 51.63461272};
 
     double a = (((as[0] * m + as[1]) * m + as[2]) * m) + as[3];
     double b = (((bs[0] * m + bs[1]) * m + bs[2]) * m) + bs[3];

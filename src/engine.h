@@ -20,6 +20,7 @@
 #define ENGINE_H_INCLUDED
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -30,11 +31,14 @@
 #include "nnue/network.h"
 #include "position.h"
 #include "search.h"
+#include "syzygy/tbprobe.h"  // for Stockfish::Depth
 #include "thread.h"
 #include "tt.h"
 #include "ucioption.h"
 
 namespace Stockfish {
+
+enum Square : int;
 
 class Engine {
    public:
@@ -45,8 +49,10 @@ class Engine {
     Engine(std::string path = "");
     ~Engine() { wait_for_search_finished(); }
 
+    std::uint64_t perft(const std::string& fen, Depth depth, bool isChess960);
+
     // non blocking call to start searching
-    void go(const Search::LimitsType&);
+    void go(Search::LimitsType&);
     // non blocking call to stop searching
     void stop();
 
@@ -88,6 +94,7 @@ class Engine {
 
     Position     pos;
     StateListPtr states;
+    Square       capSq;
 
     OptionsMap           options;
     ThreadPool           threads;

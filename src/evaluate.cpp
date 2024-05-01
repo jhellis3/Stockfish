@@ -25,12 +25,14 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <memory>
 
 #include "nnue/network.h"
 #include "nnue/nnue_misc.h"
 #include "position.h"
 #include "types.h"
 #include "uci.h"
+#include "nnue/nnue_accumulator.h"
 
 namespace Stockfish {
 
@@ -45,7 +47,10 @@ int Eval::simple_eval(const Position& pos, Color c) {
 
 // Evaluate is the evaluator for the outer world. It returns a static evaluation
 // of the position from the point of view of the side to move.
-Value Eval::evaluate(const Eval::NNUE::Networks& networks, const Position& pos, int contempt) {
+Value Eval::evaluate(const Eval::NNUE::Networks&    networks,
+                     const Position&                pos,
+                     Eval::NNUE::AccumulatorCaches& caches,
+                     int                            contempt) {
 
     assert(!pos.checkers());
 
@@ -53,8 +58,8 @@ Value Eval::evaluate(const Eval::NNUE::Networks& networks, const Position& pos, 
     int  r50        = std::min(80, pos.rule50_count());
     bool smallNet   = std::abs(simpleEval) > SmallNetThreshold;
 
-    Value v = smallNet ? networks.small.evaluate(pos, true, false)
-                       : networks.big.evaluate(pos, true, false);
+    Value v = smallNet ? networks.small.evaluate(pos, &caches.small, true, false)
+                       : networks.big.evaluate(pos, &caches.big, true, false);
 
     v = v * ((smallNet ? 99 : 88) -  r50) / 100;
 
@@ -72,20 +77,22 @@ Value Eval::evaluate(const Eval::NNUE::Networks& networks, const Position& pos, 
 // Trace scores are from white's point of view
 std::string Eval::trace(Position& pos, const Eval::NNUE::Networks& networks) {
 
+    auto caches = std::make_unique<Eval::NNUE::AccumulatorCaches>(networks);
+
     if (pos.checkers())
         return "Final evaluation: none (in check)";
 
     std::stringstream ss;
     ss << std::showpoint << std::noshowpos << std::fixed << std::setprecision(2);
-    ss << '\n' << NNUE::trace(pos, networks) << '\n';
+    ss << '\n' << NNUE::trace(pos, networks, *caches) << '\n';
 
     ss << std::showpoint << std::showpos << std::fixed << std::setprecision(2) << std::setw(15);
 
-    Value v = networks.big.evaluate(pos, true);
+    Value v = networks.big.evaluate(pos, &caches->big, true);
     v       = pos.side_to_move() == WHITE ? v : -v;
     ss << "NNUE evaluation        " << 0.01 * UCIEngine::to_cp(v, pos) << " (white side)\n";
 
-    v = evaluate(networks, pos, 0);
+    v = evaluate(networks, pos, *caches, 0);
     v = pos.side_to_move() == WHITE ? v : -v;
     ss << "Final evaluation       " << 0.01 * UCIEngine::to_cp(v, pos) << " (white side)";
     ss << " [with scaled NNUE, ...]";
