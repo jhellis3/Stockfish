@@ -502,30 +502,13 @@ Value Search::Worker::search(
     if (PvNode && thisThread->selDepth < ss->ply + 1)
         thisThread->selDepth = ss->ply + 1;
 
-    // Transposition table lookup. We don't want the score of a partial
-    // search to overwrite a previous full search TT value, so we use a different
-    // position key in case of an excluded move.
     excludedMove = ss->excludedMove;
-    posKey = pos.key();
-    tte = tt.probe(posKey, ss->ttHit);
-    ttValue = ss->ttHit ? value_from_tt(tte->value(), ss->ply) : VALUE_NONE;
-    ttValue = (abs(ttValue) > VALUE_MAX_EVAL || r50Count < 14) ? ttValue : ((113 - r50Count) * ttValue / 100);
-    ttDepth = tte->depth();
-    ttBound = tte->bound();
-    ttMove =  rootNode ? thisThread->rootMoves[thisThread->pvIdx].pv[0]
-            : ss->ttHit    ? tte->move() : Move::none();
-    ttCapture = ttMove && pos.capture(ttMove);
-
-    // At this point, if excluded, skip straight to step 6, static eval. However,
-    // to save indentation, we list the condition in all code between here and there.
-    if (!excludedMove)
-        ss->ttPv = PvNode || (ss->ttHit && tte->is_pv());
 
     if (!rootNode)
     {
         // Check if we have an upcoming move which draws by repetition, or
         // if the opponent had an alternative move earlier to this position.
-        if (pos.has_game_cycle(ss->ply))
+        if (pos.has_game_cycle(ss->ply) && !excludedMove)
         {
             if (drawValue >= beta)
                 return drawValue;
@@ -562,6 +545,22 @@ Value Search::Worker::search(
     ss->multipleExtensions                      = (ss - 1)->multipleExtensions;
     Square prevSq = ((ss - 1)->currentMove).is_ok() ? ((ss - 1)->currentMove).to_sq() : SQ_NONE;
     ss->statScore = 0;
+
+    // Step 4. Transposition table lookup.
+    posKey = pos.key();
+    tte = tt.probe(posKey, ss->ttHit);
+    ttValue = ss->ttHit ? value_from_tt(tte->value(), ss->ply) : VALUE_NONE;
+    ttValue = (abs(ttValue) > VALUE_MAX_EVAL || r50Count < 14) ? ttValue : ((113 - r50Count) * ttValue / 100);
+    ttDepth = tte->depth();
+    ttBound = tte->bound();
+    ttMove =  rootNode ? thisThread->rootMoves[thisThread->pvIdx].pv[0]
+            : ss->ttHit    ? tte->move() : Move::none();
+    ttCapture = ttMove && pos.capture(ttMove);
+
+    // At this point, if excluded, skip straight to step 6, static eval. However,
+    // to save indentation, we list the condition in all code between here and there.
+    if (!excludedMove)
+        ss->ttPv = PvNode || (ss->ttHit && tte->is_pv());
 
     // At non-PV nodes we check for an early TT cutoff
     if (  !PvNode
@@ -620,7 +619,7 @@ Value Search::Worker::search(
                 if (    abs(v) <= drawScore
                     || !ss->ttHit
                     || (v < -drawScore && alpha > tbValue)
-                    || (v >  drawScore && alpha < tbValue))
+                    || (v >  drawScore && alpha < VALUE_MAX_EVAL))
                 {
                     tte->save(posKey, tbValue, ss->ttPv, v > drawScore ? BOUND_LOWER : v < -drawScore ? BOUND_UPPER : BOUND_EXACT,
                               v == 0 ? MAX_PLY : depth, Move::none(), VALUE_NONE, tt.generation());
@@ -701,7 +700,6 @@ Value Search::Worker::search(
 
     // Begin early pruning.
     if (   !PvNode
-        && (ourMove || !excludedMove)
         && !thisThread->nmpGuardV
         &&  abs(eval) < VALUE_MAX_EVAL
         &&  abs(beta) < VALUE_MAX_EVAL
@@ -712,6 +710,7 @@ Value Search::Worker::search(
        if (    depth < (9 - 2 * ((ss-1)->mainLine || (ss-1)->secondaryLine || (ttMove && !ttCapture)))
            && !ss->ttPv
            && !kingDanger
+           && !excludedMove
            && !gameCycle
            && !(thisThread->nmpGuard && nullParity)
            &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving, opponentWorsening) - (ss-1)->statScore / 286 >= beta)
@@ -721,6 +720,7 @@ Value Search::Worker::search(
        if (   !thisThread->nmpGuard
            &&  (ss-1)->statScore < 18001
            && !gameCycle
+           && !excludedMove
            &&  eval >= ss->staticEval
            &&  ss->staticEval >= beta - 21 * depth + 312
            &&  pos.non_pawn_material(us)
@@ -845,6 +845,7 @@ Value Search::Worker::search(
         &&  ttCapture
         &&  ourMove
         && !gameCycle
+        && !excludedMove
         && !kingDanger
         && !(ss-1)->secondaryLine
         && !(thisThread->nmpGuard && nullParity)
@@ -883,7 +884,7 @@ Value Search::Worker::search(
     bool lmrCapture = cutNode && (ss-1)->moveCount > 1;
 
     bool gameCycleExtension =    gameCycle
-                              && (   PvNode
+                              && (   (PvNode && ourMove)
                                   || (ss-1)->mainLine
                                   || ((ss-1)->secondaryLine && thisThread->pvValue < drawValue));
 
