@@ -50,16 +50,17 @@ int Eval::simple_eval(const Position& pos, Color c) {
 Value Eval::evaluate(const Eval::NNUE::Networks&    networks,
                      const Position&                pos,
                      Eval::NNUE::AccumulatorCaches& caches,
-                     int                            contempt) {
+                     int                            contempt,
+                     int                            r50) {
 
     assert(!pos.checkers());
 
+    r50             = std::min(80, r50);
     int  simpleEval = simple_eval(pos, pos.side_to_move());
-    int  r50        = std::min(80, pos.rule50_count());
     bool smallNet   = std::abs(simpleEval) > SmallNetThreshold;
 
-    Value v = smallNet ? networks.small.evaluate(pos, &caches.small, true, false)
-                       : networks.big.evaluate(pos, &caches.big, true, false);
+    Value v = smallNet ? networks.small.evaluate(pos, &caches.small, true)
+                       : networks.big.evaluate(pos, &caches.big, true);
 
     v = v * ((smallNet ? 99 : 88) -  r50) / 100;
 
@@ -92,7 +93,7 @@ std::string Eval::trace(Position& pos, const Eval::NNUE::Networks& networks) {
     v       = pos.side_to_move() == WHITE ? v : -v;
     ss << "NNUE evaluation        " << 0.01 * UCIEngine::to_cp(v, pos) << " (white side)\n";
 
-    v = evaluate(networks, pos, *caches, 0);
+    v = evaluate(networks, pos, *caches, 0, 0);
     v = pos.side_to_move() == WHITE ? v : -v;
     ss << "Final evaluation       " << 0.01 * UCIEngine::to_cp(v, pos) << " (white side)";
     ss << " [with scaled NNUE, ...]";

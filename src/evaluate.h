@@ -29,7 +29,7 @@ class Position;
 
 namespace Eval {
 
-constexpr inline int SmallNetThreshold = 2389;
+constexpr inline int SmallNetThreshold = 1274;
 
 // The default net name MUST follow the format nn-[SHA256 first 12 digits].nnue
 // for the build process (profile-build and fishtest) to work. Do not change the
@@ -49,7 +49,8 @@ int   simple_eval(const Position& pos, Color c);
 Value evaluate(const NNUE::Networks&          networks,
                const Position&                pos,
                Eval::NNUE::AccumulatorCaches& caches,
-               int                            contempt);
+               int                            contempt,
+               int                            r50);
 }  // namespace Eval
 
 }  // namespace Stockfish

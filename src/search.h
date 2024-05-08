@@ -76,7 +76,6 @@ struct Stack {
     bool            ttHit;
     bool            secondaryLine;
     bool            mainLine;
-    uint16_t        multipleExtensions;
     uint16_t        cutoffCnt;
 };
 
