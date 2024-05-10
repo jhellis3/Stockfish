@@ -547,7 +547,7 @@ Value Search::Worker::search(
     Depth    extension, newDepth;
     Value    bestValue, value, ttValue, eval, maxValue, probCutBeta;
     bool     givesCheck, improving, priorCapture, opponentWorsening;
-    bool     capture, moveCountPruning, ttCapture;
+    bool     capture, moveCountPruning, multiTT, ttCapture;
     Piece    movedPiece;
     int      moveCount, captureCount, quietCount;
 
@@ -589,7 +589,12 @@ Value Search::Worker::search(
             return alpha;
     }
     else
+    {
         thisThread->rootDelta = beta - alpha;
+
+        if (thisThread->pvIdx > 0 && depth > 3)
+            depth -= 2;
+    }
 
     assert(0 <= ss->ply && ss->ply < MAX_PLY);
 
@@ -614,8 +619,13 @@ Value Search::Worker::search(
     if (!excludedMove)
         ss->ttPv = PvNode || (ss->ttHit && tte->is_pv());
 
+    multiTT =     thisThread->pvIdx > 0
+              && !rootNode
+              && !(ss->ply & 1)
+              && (tte->bound() & BOUND_LOWER);
+
     // At non-PV nodes we check for an early TT cutoff
-    if (!PvNode && !excludedMove && tte->depth() > depth
+    if ((!PvNode || multiTT) && !excludedMove && tte->depth() > depth
         && ttValue != VALUE_NONE  // Possible in case of TT access race or if !ttHit
         && (tte->bound() & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
     {
@@ -1400,7 +1410,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
     Move     ttMove, move, bestMove;
     Depth    ttDepth;
     Value    bestValue, value, ttValue, futilityBase;
-    bool     pvHit, givesCheck, capture;
+    bool     pvHit, givesCheck, capture, multiTT;
     int      moveCount;
     Color    us = pos.side_to_move();
 
@@ -1438,8 +1448,12 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
     ttMove  = ss->ttHit ? tte->move() : Move::none();
     pvHit   = ss->ttHit && tte->is_pv();
 
+    multiTT =     thisThread->pvIdx > 0
+              && !(ss->ply & 1)
+              && (tte->bound() & BOUND_LOWER);
+
     // At non-PV nodes we check for an early TT cutoff
-    if (!PvNode && tte->depth() >= ttDepth
+    if ((!PvNode || multiTT) && tte->depth() >= ttDepth
         && ttValue != VALUE_NONE  // Only in case of TT access race or if !ttHit
         && (tte->bound() & (ttValue >= beta ? BOUND_LOWER : BOUND_UPPER)))
         return ttValue;
