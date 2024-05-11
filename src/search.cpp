@@ -837,7 +837,7 @@ Value Search::Worker::search(
              && !(ss-1)->secondaryLine
              &&  depth >= 8
              && (!ttMove || (ttBound == BOUND_UPPER)))
-        depth -= 2;
+        depth -= 1 + !ttMove;
 
     } // In check search starts here
 
