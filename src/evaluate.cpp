@@ -57,10 +57,16 @@ Value Eval::evaluate(const Eval::NNUE::Networks&    networks,
 
     r50             = std::min(80, r50);
     int  simpleEval = simple_eval(pos, pos.side_to_move());
-    bool smallNet   = std::abs(simpleEval) > SmallNetThreshold;
+    bool smallNet   = std::abs(simpleEval) > SmallNetThreshold + 6 * pos.count<PAWN>();
 
     Value v = smallNet ? networks.small.evaluate(pos, &caches.small, true)
                        : networks.big.evaluate(pos, &caches.big, true);
+
+    if (smallNet && (v * simpleEval < 0 || std::abs(v) < 500))
+    {
+        v        = networks.big.evaluate(pos, &caches.big, true);
+        smallNet = false;
+    }
 
     v = v * ((smallNet ? 99 : 88) -  r50) / 100;
 
