@@ -1876,6 +1876,7 @@ void SearchManager::pv(const Search::Worker&     worker,
                        Depth                     depth) const {
 
     const auto  nodes     = threads.nodes_searched();
+    const auto  contempt  = UCIEngine::to_int(int(worker.options["Contempt"]), worker.rootPos);
     const auto& rootMoves = worker.rootMoves;
     const auto& pos       = worker.rootPos;
     size_t      pvIdx     = worker.pvIdx;
@@ -1899,6 +1900,9 @@ void SearchManager::pv(const Search::Worker&     worker,
         bool tb = worker.tbConfig.rootInTB && std::abs(v) < VALUE_MAX_EVAL;
 
         v       = tb ? rootMoves[i].tbScore : v;
+
+        if (contempt > 0 && v > 0 && v < VALUE_MAX_EVAL)
+            v -= contempt;
 
         std::string pv;
         for (Move m : rootMoves[i].pv)
