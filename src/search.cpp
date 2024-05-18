@@ -735,7 +735,7 @@ Value Search::Worker::search(
            thisThread->nmpSide = ourMove;
 
            // Null move dynamic reduction based on depth and eval
-           Depth R = std::min(int(eval - beta) / 144, 6) + depth / 3 + 4;
+           Depth R = std::min(int(eval - beta) / 144, 6) + depth / 3 + 5;
 
            if (!ourMove && (ss-1)->secondaryLine)
                R = std::min(R, 8);
@@ -893,7 +893,7 @@ Value Search::Worker::search(
 
     bool gameCycleExtension =    gameCycle
                               && allowExt
-                              && (   (PvNode && ourMove)
+                              && (   PvNode
                                   || (ss-1)->mainLine
                                   || ((ss-1)->secondaryLine && thisThread->pvValue < drawValue));
 
@@ -1091,7 +1091,7 @@ Value Search::Worker::search(
 
             if (allowExt && value < singularBeta && (ttValue > beta - 128 || !ourMove))
             {
-                int doubleMargin = 285 * PvNode - 228 * !ttCapture; // essentially !PvNode || !ttCapture
+                int doubleMargin = 285 * PvNode - 228 * !ttCapture;
 
                 extension = 1;
 
@@ -1128,6 +1128,7 @@ Value Search::Worker::search(
         {
             // Check extensions (~1 Elo)
             if (   givesCheck
+                && !gameCycle
                 && depth > 7)
                 extension = 1;
 
