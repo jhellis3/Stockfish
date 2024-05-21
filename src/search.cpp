@@ -235,7 +235,6 @@ void Search::Worker::iterative_deepening() {
     size_t multiPV = size_t(options["MultiPV"]);
 
     int rootContempt = UCIEngine::to_int(int(options["Contempt"]), rootPos);
-    contempt[~us] = 0;
 
     multiPV = std::min(multiPV, rootMoves.size());
 
@@ -274,10 +273,17 @@ void Search::Worker::iterative_deepening() {
             int momentum = int(avg) * avg / 9474;
             delta        = 10;
 
-            if (avg >= VALUE_DRAW)
+            // Dynamic symmetric contempt. If we at least have a draw, we have contempt; otherwise assume opponent has it.
+            if (rootMoves[0].averageScore >= VALUE_DRAW)
+            {
                 contempt[us] = rootContempt;
+                contempt[~us] = 0;
+            }
             else
+            {
                 contempt[us] = 0;
+                contempt[~us] = rootContempt;
+            }
 
             alpha = std::max(avg - (delta + (avg < 0 ? momentum : 0)),-VALUE_INFINITE);
             beta  = std::min(avg + (delta + (avg > 0 ? momentum : 0)), VALUE_INFINITE);
@@ -1901,8 +1907,14 @@ void SearchManager::pv(const Search::Worker&     worker,
 
         v       = tb ? rootMoves[i].tbScore : v;
 
-        if (contempt > 0 && v > 0 && v < VALUE_MAX_EVAL)
-            v -= contempt;
+        if (contempt > 0 && abs(v) < VALUE_MAX_EVAL)
+        {
+            if (v >= contempt)
+                v -= contempt;
+
+            else if (v <= -contempt)
+                v += contempt;
+        }
 
         std::string pv;
         for (Move m : rootMoves[i].pv)

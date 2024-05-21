@@ -381,7 +381,8 @@ std::string UCIEngine::format_score(const Score& s) {
                    return std::string("cp ") + std::to_string(tb.value);
                },
                [](Score::InternalUnits units) -> std::string {
-                   return std::string("cp ") + std::to_string(units.value);
+                   int rounded = std::round(units.value / 5) * 5;
+                   return std::string("cp ") + std::to_string(rounded);
                }};
 
     return s.visit(format);
