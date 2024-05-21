@@ -46,7 +46,7 @@ int Eval::simple_eval(const Position& pos, Color c) {
 
 bool Eval::use_smallnet(const Position& pos) {
     int simpleEval = simple_eval(pos, pos.side_to_move());
-    return std::abs(simpleEval) > 1126 + 6 * pos.count<PAWN>();
+    return std::abs(simpleEval) > 1018 + 5 * pos.count<PAWN>();
 }
 
 // Evaluate is the evaluator for the outer world. It returns a static evaluation
@@ -65,13 +65,13 @@ Value Eval::evaluate(const Eval::NNUE::Networks&    networks,
     Value v = smallNet ? networks.small.evaluate(pos, &caches.small, true)
                        : networks.big.evaluate(pos, &caches.big, true);
 
-    if (smallNet && (v * simpleEval < 0 || std::abs(v) < 500))
+    if (smallNet && (v * simpleEval < 0))
     {
         v        = networks.big.evaluate(pos, &caches.big, true);
         smallNet = false;
     }
 
-    v = v * ((smallNet ? 99 : 88) -  r50) / 100;
+    v = v * (98 -  r50) / 100;
 
     v += contempt;
 
