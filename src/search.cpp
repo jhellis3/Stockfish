@@ -90,7 +90,7 @@ Value to_corrected_static_eval(Value v, const Worker& w, const Position& pos) {
     const auto  cv =
       (6245 * pcv + 3442 * mcv + 3471 * macv + 5958 * micv + 6566 * (wnpcv + bnpcv)) / 131072;
     v += cv;
-    return std::clamp(v, VALUE_MAX_EVAL + 1, VALUE_MAX_EVAL - 1);
+    return std::clamp(v, -VALUE_MAX_EVAL + 1, VALUE_MAX_EVAL - 1);
 }
 
 // History and stats update bonus, based on depth
