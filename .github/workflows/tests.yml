@@ -74,6 +74,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Download required linux packages
         if: runner.os == 'Linux'
@@ -110,12 +111,12 @@ jobs:
           FROM ${{ matrix.config.base_image }}
           WORKDIR /app
           RUN apk update && apk add make g++
-          CMD ["sh", "script.sh"]
+          CMD ["sh", "src/script.sh"]
           EOF
 
       - name: Download required macOS packages
         if: runner.os == 'macOS'
-        run: brew install coreutils
+        run: brew install coreutils gcc@11
 
       - name: Setup msys and install required packages
         if: runner.os == 'Windows'
@@ -143,7 +144,7 @@ jobs:
             $COMPCXX -v
           else
             echo "$COMPCXX -v" > script.sh
-            docker run --rm --platform ${{ matrix.config.platform }} -v ${{ github.workspace }}/src:/app sf_builder
+            docker run --rm --platform ${{ matrix.config.platform }} -v ${{ github.workspace }}:/app sf_builder
           fi
 
       - name: Test help target

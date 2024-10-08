@@ -12,8 +12,12 @@ jobs:
   Prerelease:
     if: github.ref == 'refs/heads/crystal'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # For deleting/creating a prerelease
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # returns null if no pre-release exists
       - name: Get Commit SHA of Latest Pre-release
@@ -63,6 +67,8 @@ jobs:
       arm_matrix: ${{ steps.set-arm-matrix.outputs.arm_matrix }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - id: set-matrix
         run: |
           TASKS=$(echo $(cat .github/ci/matrix.json) )
@@ -87,15 +93,27 @@ jobs:
     uses: ./.github/workflows/sanitizers.yml
   Tests:
     uses: ./.github/workflows/tests.yml
+  Matetrack:
+    uses: ./.github/workflows/matetrack.yml
+  Games:
+    uses: ./.github/workflows/games.yml
   Binaries:
     if: (startsWith(github.ref_name, 'v') && github.ref_type == 'tag')
     needs: [Matrix, Prerelease, Compilation]
     uses: ./.github/workflows/upload_binaries.yml
     with:
       matrix: ${{ needs.Matrix.outputs.matrix }}
+    permissions:
+      contents: write # For deleting/creating a (pre)release
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}
   ARM_Binaries:
     if: (startsWith(github.ref_name, 'v') && github.ref_type == 'tag')
     needs: [Matrix, Prerelease, ARMCompilation]
     uses: ./.github/workflows/upload_binaries.yml
     with:
       matrix: ${{ needs.Matrix.outputs.arm_matrix }}
+    permissions:
+      contents: write # For deleting/creating a (pre)release
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}

@@ -19,10 +19,10 @@
 #ifndef UCI_H_INCLUDED
 #define UCI_H_INCLUDED
 
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <string_view>
-#include <cstdint>
 
 #include "engine.h"
 #include "misc.h"
@@ -59,8 +59,11 @@ class UCIEngine {
     Engine      engine;
     CommandLine cli;
 
+    static void print_info_string(std::string_view str);
+
     void          go(std::istringstream& is);
     void          bench(std::istream& args);
+    void          benchmark(std::istream& args);
     void          position(std::istringstream& is);
     void          setoption(std::istringstream& is);
     std::uint64_t perft(const Search::LimitsType&);
@@ -69,6 +72,8 @@ class UCIEngine {
     static void on_update_full(const Engine::InfoFull& info, bool showWDL);
     static void on_iter(const Engine::InfoIter& info);
     static void on_bestmove(std::string_view bestmove, std::string_view ponder);
+
+    void init_search_update_listeners();
 };
 
 }  // namespace Stockfish

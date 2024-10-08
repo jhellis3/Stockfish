@@ -20,18 +20,21 @@
 #define NETWORK_H_INCLUDED
 
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <tuple>
 #include <utility>
 
-#include "../misc.h"
+#include "../memory.h"
 #include "../position.h"
 #include "../types.h"
+#include "nnue_accumulator.h"
 #include "nnue_architecture.h"
 #include "nnue_feature_transformer.h"
 #include "nnue_misc.h"
-#include "nnue_accumulator.h"
 
 namespace Stockfish::Eval::NNUE {
 
@@ -40,6 +43,7 @@ enum class EmbeddedNNUEType {
     SMALL,
 };
 
+using NetworkOutput = std::tuple<Value, Value>;
 
 template<typename Arch, typename Transformer>
 class Network {
@@ -50,19 +54,22 @@ class Network {
         evalFile(file),
         embeddedType(type) {}
 
+    Network(const Network& other);
+    Network(Network&& other) = default;
+
+    Network& operator=(const Network& other);
+    Network& operator=(Network&& other) = default;
+
     void load(const std::string& rootDirectory, std::string evalfilePath);
     bool save(const std::optional<std::string>& filename) const;
 
-
-    Value evaluate(const Position& pos,
-                   AccumulatorCaches::Cache<FTDimensions>* cache,
-                   bool            adjusted   = false) const;
-
+    NetworkOutput evaluate(const Position&                         pos,
+                           AccumulatorCaches::Cache<FTDimensions>* cache) const;
 
     void hint_common_access(const Position&                         pos,
                             AccumulatorCaches::Cache<FTDimensions>* cache) const;
 
-    void          verify(std::string evalfilePath) const;
+    void verify(std::string evalfilePath, const std::function<void(std::string_view)>&) const;
     NnueEvalTrace trace_evaluate(const Position&                         pos,
                                  AccumulatorCaches::Cache<FTDimensions>* cache) const;
 
@@ -85,7 +92,7 @@ class Network {
     LargePagePtr<Transformer> featureTransformer;
 
     // Evaluation function
-    AlignedPtr<Arch> network[LayerStacks];
+    AlignedPtr<Arch[]> network;
 
     EvalFile         evalFile;
     EmbeddedNNUEType embeddedType;

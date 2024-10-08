@@ -24,8 +24,9 @@
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
-#include <sstream>
 #include <memory>
+#include <sstream>
+#include <tuple>
 
 #include "nnue/network.h"
 #include "nnue/nnue_misc.h"
@@ -46,7 +47,7 @@ int Eval::simple_eval(const Position& pos, Color c) {
 
 bool Eval::use_smallnet(const Position& pos) {
     int simpleEval = simple_eval(pos, pos.side_to_move());
-    return std::abs(simpleEval) > 1018 + 5 * pos.count<PAWN>();
+    return std::abs(simpleEval) > 962;
 }
 
 // Evaluate is the evaluator for the outer world. It returns a static evaluation
@@ -60,18 +61,11 @@ Value Eval::evaluate(const Eval::NNUE::Networks&    networks,
     assert(!pos.checkers());
 
     r50             = std::min(80, r50);
-    int  simpleEval = simple_eval(pos, pos.side_to_move());
-    bool smallNet   = use_smallnet(pos);
-    Value v = smallNet ? networks.small.evaluate(pos, &caches.small, true)
-                       : networks.big.evaluate(pos, &caches.big, true);
+    auto [psqt, positional] = networks.big.evaluate(pos, &caches.big);
 
-    if (smallNet && (v * simpleEval < 0))
-    {
-        v        = networks.big.evaluate(pos, &caches.big, true);
-        smallNet = false;
-    }
+    Value v = (125 * psqt + 131 * positional) / 128;
 
-    v = v * (98 -  r50) / 100;
+    v = v * (98 - r50) / 100;
 
     v += contempt;
 
@@ -98,8 +92,9 @@ std::string Eval::trace(Position& pos, const Eval::NNUE::Networks& networks) {
 
     ss << std::showpoint << std::showpos << std::fixed << std::setprecision(2) << std::setw(15);
 
-    Value v = networks.big.evaluate(pos, &caches->big, true);
-    v       = pos.side_to_move() == WHITE ? v : -v;
+    auto [psqt, positional] = networks.big.evaluate(pos, &caches->big);
+    Value v                 = psqt + positional;
+    v                       = pos.side_to_move() == WHITE ? v : -v;
     ss << "NNUE evaluation        " << 0.01 * UCIEngine::to_cp(v, pos) << " (white side)\n";
 
     v = evaluate(networks, pos, *caches, 0, 0);
