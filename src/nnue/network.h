@@ -66,6 +66,7 @@ class Network {
     NetworkOutput evaluate(const Position&                         pos,
                            AccumulatorCaches::Cache<FTDimensions>* cache) const;
 
+
     void hint_common_access(const Position&                         pos,
                             AccumulatorCaches::Cache<FTDimensions>* cache) const;
 

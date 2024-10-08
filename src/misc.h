@@ -200,6 +200,7 @@ inline uint64_t mul_hi64(uint64_t a, uint64_t b) {
 #endif
 }
 
+
 struct CommandLine {
    public:
     CommandLine(int _argc, char** _argv) :

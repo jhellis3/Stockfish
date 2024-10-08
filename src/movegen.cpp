@@ -158,14 +158,9 @@ ExtMove* generate_moves(const Position& pos, ExtMove* moveList, Bitboard target)
     {
         Square   from = pop_lsb(bb);
         Bitboard b    = attacks_bb<Pt>(from, pos.pieces()) & target;
-        Square ksq = pos.square<KING>(Us);
 
         while (b)
-        {
-            Square to = pop_lsb(b); // check later
-            if (!(pos.blockers_for_king(Us) & from) || aligned(from, to, ksq))
-                *moveList++ = Move(from, to);
-        }
+            *moveList++ = Move(from, pop_lsb(b));
     }
 
     return moveList;
@@ -198,11 +193,7 @@ ExtMove* generate_all(const Position& pos, ExtMove* moveList) {
     Bitboard b = attacks_bb<KING>(ksq) & (Type == EVASIONS ? ~pos.pieces(Us) : target);
 
     while (b)
-    {
-       Square to = pop_lsb(b); // check later
-       if ((pos.attackers_to(to) & pos.pieces(~Us)) == 0)
-           *moveList++ = Move(ksq, to);
-    }
+        *moveList++ = Move(ksq, pop_lsb(b));
 
     if ((Type == QUIETS || Type == NON_EVASIONS) && pos.can_castle(Us & ANY_CASTLING))
         for (CastlingRights cr : {Us & KING_SIDE, Us & QUEEN_SIDE})

@@ -97,7 +97,6 @@ Engine::Engine(std::optional<std::string> path) :
         Tablebases::init(o);
         return std::nullopt;
     });
-    //options["SyzygyProbeDepth"] << Option(1, 1, 100);
     options["Syzygy50MoveRule"] << Option(true);
     options["SyzygyProbeLimit"] << Option(7, 0, 7);
     options["EvalFile"] << Option(EvalFileDefaultNameBig, [this](const Option& o) {

@@ -667,7 +667,7 @@ Value Search::Worker::search(
                     || (v < -drawScore && alpha > tbValue)
                     || (v >  drawScore && alpha < VALUE_MAX_EVAL))
                 {
-                    ttWriter.write(posKey, value_to_tt(tbValue, ss->ply), ss->ttPv, v > drawScore ? BOUND_LOWER : v < -drawScore ? BOUND_UPPER : BOUND_EXACT,
+                    ttWriter.write(posKey, tbValue, ss->ttPv, v > drawScore ? BOUND_LOWER : v < -drawScore ? BOUND_UPPER : BOUND_EXACT,
                               v == 0 ? MAX_PLY : depth, Move::none(), VALUE_NONE, tt.generation());
 
                     return tbValue;
@@ -700,21 +700,23 @@ Value Search::Worker::search(
         // Never assume anything about values stored in TT
         unadjustedStaticEval = ttData.eval;
         if (unadjustedStaticEval == VALUE_NONE)
-            unadjustedStaticEval = evaluate(networks[numaAccessToken], pos, refreshTable, contempt[us], r50Count);
+            unadjustedStaticEval =
+              evaluate(networks[numaAccessToken], pos, refreshTable, contempt[us], r50Count);
         else if (PvNode)
             Eval::NNUE::hint_common_parent_position(pos, networks[numaAccessToken], refreshTable);
 
         ss->staticEval = eval = to_corrected_static_eval(unadjustedStaticEval, *thisThread, pos);
 
         // ttValue can be used as a better position evaluation (~7 Elo)
-        if (    ttData.value != VALUE_NONE
+        if (ttData.value != VALUE_NONE
             && (ttData.move != Move::none() || ttData.value <= eval)
             && (ttData.bound & (ttData.value > eval ? BOUND_LOWER : BOUND_UPPER)))
             eval = ttData.value;
     }
     else
     {
-        unadjustedStaticEval = evaluate(networks[numaAccessToken], pos, refreshTable, contempt[us], r50Count);
+        unadjustedStaticEval =
+          evaluate(networks[numaAccessToken], pos, refreshTable, contempt[us], r50Count);
         ss->staticEval = eval = to_corrected_static_eval(unadjustedStaticEval, *thisThread, pos);
 
         // Static evaluation is saved as it was before adjustment by correction history
@@ -879,8 +881,8 @@ Value Search::Worker::search(
              && (!ttData.move || (ttData.bound == BOUND_UPPER)))
         depth -= 1 + !ttData.move;
 
-    if (!PvNode && ss->ttHit && (ttData.bound & BOUND_UPPER) && ttData.value > alpha + 5 * depth)
-        depth--;
+    /*if (!PvNode && ss->ttHit && (ttData.bound & BOUND_UPPER) && ttData.value > alpha + 5 * depth)
+        depth--;*/
 
     } // In check search starts here
 
@@ -977,8 +979,9 @@ Value Search::Worker::search(
         // At root obey the "searchmoves" option and skip moves not listed in Root
         // Move List. In MultiPV mode we also skip PV moves that have been already
         // searched and those of lower "TB rank" if we are in a TB root position.
-        if (rootNode && !std::count(thisThread->rootMoves.begin() + thisThread->pvIdx,
-                                    thisThread->rootMoves.begin() + thisThread->pvLast, move))
+        if (rootNode
+            && !std::count(thisThread->rootMoves.begin() + thisThread->pvIdx,
+                           thisThread->rootMoves.begin() + thisThread->pvLast, move))
             continue;
 
         ss->moveCount = ++moveCount;
@@ -991,11 +994,11 @@ Value Search::Worker::search(
         if (PvNode)
             (ss + 1)->pv = nullptr;
 
-        extension = 0;
-        capture = pos.capture_stage(move);
+        extension  = 0;
+        capture    = pos.capture_stage(move);
         movedPiece = pos.moved_piece(move);
         givesCheck = pos.gives_check(move);
-        isMate = false;
+        isMate     = false;
 
 
         // This tracks all of our possible responses to our opponent's best moves outside of the PV.
@@ -1304,12 +1307,12 @@ Value Search::Worker::search(
                 if (value >= beta)
                 {
                     rm.scoreLowerbound = true;
-                    rm.uciScore = beta;
+                    rm.uciScore        = beta;
                 }
                 else if (value <= alpha)
                 {
                     rm.scoreUpperbound = true;
-                    rm.uciScore = alpha;
+                    rm.uciScore        = alpha;
                 }
 
                 rm.pv.resize(1);
@@ -1351,8 +1354,8 @@ Value Search::Worker::search(
 
                 if (value >= beta)
                 {
-                    ss->cutoffCnt += 1 + !ttData.move + (extension < 2);
-                    assert(value >= beta); // Fail high
+                    ss->cutoffCnt += !ttData.move + (extension < 2);
+                    assert(value >= beta);  // Fail high
                     break;
                 }
                 else
@@ -1487,12 +1490,12 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     StateInfo st;
     ASSERT_ALIGNED(&st, Eval::NNUE::CacheLineSize);
 
-    Key      posKey;
-    Move     move, bestMove;
-    Value    bestValue, value, futilityBase, drawValue;
-    bool     pvHit, givesCheck, capture, gameCycle;
-    int      moveCount, r50Count;
-    Color    us = pos.side_to_move();
+    Key   posKey;
+    Move  move, bestMove;
+    Value bestValue, value, futilityBase, drawValue;
+    bool  pvHit, givesCheck, capture, gameCycle;
+    int   moveCount, r50Count;
+    Color us = pos.side_to_move();
 
     // Step 1. Initialize node
     if (PvNode)
@@ -1542,6 +1545,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     ss->ttHit    = ttHit;
     ttData.move  = ttHit ? ttData.move : Move::none();
     ttData.value = ttHit ? value_from_tt(ttData.value, ss->ply) : VALUE_NONE;
+    ttData.value = (abs(ttData.value) > VALUE_MAX_EVAL || r50Count < 14) ? ttData.value : ((113 - r50Count) * ttData.value / 100);
     pvHit        = ttHit && ttData.is_pv;
 
     // At non-PV nodes we check for an early TT cutoff
@@ -1587,7 +1591,6 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         {
             if (std::abs(bestValue) < VALUE_MAX_EVAL)
                 bestValue = (3 * bestValue + beta) / 4;
-
             if (!ss->ttHit)
                 ttWriter.write(posKey, value_to_tt(bestValue, ss->ply), false, BOUND_LOWER,
                                DEPTH_UNSEARCHED, Move::none(), unadjustedStaticEval,
