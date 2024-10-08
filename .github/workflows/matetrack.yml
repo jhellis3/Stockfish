@@ -50,5 +50,5 @@ jobs:
       - name: Run matetrack
         working-directory: matetrack
         run: |
-          python matecheck.py  --syzygyPath 3-4-5-wdl/:3-4-5-dtz/ --engine /home/runner/work/Stockfish/Stockfish/Stockfish/src/stockfish --epdFile mates2000.epd --nodes 100000 | tee matecheckout.out
+          python matecheck.py  --syzygyPath 3-4-5-wdl/:3-4-5-dtz/ --engine /home/runner/work/Stockfish/Stockfish/Stockfish/src/crystal --epdFile mates2000.epd --nodes 100000 | tee matecheckout.out
           ! grep "issues were detected" matecheckout.out > /dev/null

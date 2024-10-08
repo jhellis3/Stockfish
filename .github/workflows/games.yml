@@ -35,8 +35,8 @@ jobs:
         working-directory: fast-chess
         run: |
           ./fast-chess  -rounds 4 -games 2 -repeat -concurrency 4 -openings file=app/tests/data/openings.epd format=epd order=random -srand $RANDOM\
-               -engine name=sf1 cmd=/home/runner/work/Stockfish/Stockfish/Stockfish/src/stockfish\
-               -engine name=sf2 cmd=/home/runner/work/Stockfish/Stockfish/Stockfish/src/stockfish\
+               -engine name=sf1 cmd=/home/runner/work/Stockfish/Stockfish/Stockfish/src/crystal\
+               -engine name=sf2 cmd=/home/runner/work/Stockfish/Stockfish/Stockfish/src/crystal\
                -ratinginterval 1 -report penta=true -each proto=uci tc=4+0.04 -log file=fast.log | tee fast.out
           cat fast.log
           ! grep "Assertion" fast.log > /dev/null

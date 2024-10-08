@@ -249,7 +249,6 @@ std::tuple<bool, TTData, TTWriter> TranspositionTable::probe(const Key key) cons
 
 TTEntry* TranspositionTable::first_entry(const Key key) const {
     return &table[mul_hi64(key, clusterCount)].entry[0];
-    //return &table[(key * (__uint128_t)clusterCount) >> 64].entry[0];
 }
 
 }  // namespace Stockfish
