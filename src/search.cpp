@@ -758,7 +758,7 @@ Value Search::Worker::search(
            && !gameCycle
            && !(thisThread->nmpGuard && nullParity)
            &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving, opponentWorsening) - (ss-1)->statScore / 272 >= beta)
-           return eval; // review test soft-fail
+           return beta + (eval - beta) / 3;
 
        // Step 9. Null move search with verification search (~35 Elo)
        if (   !thisThread->nmpGuard
@@ -824,11 +824,15 @@ Value Search::Worker::search(
            assert(probCutBeta < VALUE_INFINITE);
            MovePicker mp(pos, ttData.move, KnightValue - BishopValue + PieceValue[type_of(pos.captured_piece())],
                          &captureHistory);
+           Piece      captured;
 
            while ((move = mp.next_move()) != Move::none())
                if (move != excludedMove)
                {
                    assert(pos.capture_stage(move));
+
+                   movedPiece = pos.moved_piece(move);
+                   captured   = pos.piece_on(move.to_sq());
 
                    // Prefetch the TT entry for the resulting position
                    prefetch(tt.first_entry(pos.key_after(move)));
@@ -836,7 +840,7 @@ Value Search::Worker::search(
                    ss->currentMove = move;
                    ss->continuationHistory = &thisThread->continuationHistory[ss->inCheck]
                                                                              [true]
-                                                                             [pos.moved_piece(move)]
+                                                                             [movedPiece]
                                                                              [move.to_sq()];
 
                    pos.do_move(move, st);
@@ -852,7 +856,8 @@ Value Search::Worker::search(
 
                    if (value >= probCutBeta)
                    {
-                       //value -= (probCutBeta - beta); // review this later
+                       thisThread->captureHistory[movedPiece][move.to_sq()][type_of(captured)]
+                         << stat_bonus(depth - 2);
 
                        if (!excludedMove)
                            ttWriter.write(posKey, value_to_tt(value, ss->ply), ss->ttPv,
@@ -877,12 +882,9 @@ Value Search::Worker::search(
     // For cutNodes without a ttMove, we decrease depth by 2 if depth is high enough.
     else if (    cutNode
              && !(ss-1)->secondaryLine
-             &&  depth >= 8
+             &&  depth >= 7
              && (!ttData.move || (ttData.bound == BOUND_UPPER)))
         depth -= 1 + !ttData.move;
-
-    /*if (!PvNode && ss->ttHit && (ttData.bound & BOUND_UPPER) && ttData.value > alpha + 5 * depth)
-        depth--;*/
 
     } // In check search starts here
 
@@ -965,6 +967,7 @@ Value Search::Worker::search(
                       &&  depth >= 4 - (thisThread->completedDepth > 32) + ss->ttPv;
 
     bool doLMP =     ss->ply > 2
+                 && !PvNode
                  &&  pos.non_pawn_material(us);
 
     // Step 13. Loop through all pseudo-legal moves until no moves remain
