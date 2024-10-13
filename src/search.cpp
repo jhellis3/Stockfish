@@ -293,7 +293,7 @@ void Search::Worker::iterative_deepening() {
             // Reset aspiration window starting size
             Value avg   = rootMoves[pvIdx].averageScore;
             int momentum = int(avg) * avg / 11797;
-            delta        = 10;
+            delta        = 5 + momentum;
 
             // Dynamic symmetric contempt. If we at least have a draw, we have contempt; otherwise assume opponent has it.
             if (rootMoves[0].averageScore >= VALUE_DRAW)
@@ -923,14 +923,6 @@ Value Search::Worker::search(
     int  moveCount        = 0;
     bool moveCountPruning = false;
 
-    // Indicate PvNodes that will probably fail low if the node was searched
-    // at a depth equal to or greater than the current depth, and the result
-    // of this search was a fail low.
-    bool likelyFailLow =    PvNode
-                         && ttData.move != Move::none()
-                         && (ttData.bound & BOUND_UPPER)
-                         && ttData.depth >= depth;
-
     bool allowExt = depth + ss->ply + 2 < MAX_PLY;
 
     bool allowMultipleExt = ss->ply < 2 * rootDepth;
@@ -945,12 +937,10 @@ Value Search::Worker::search(
 
     bool kingDangerThem = ourMove && pos.king_danger(~us);
 
-    int lmrAdjustment =   ttCapture
-                        + 2 * cutNode
+    int lmrAdjustment =   cutNode * 2
                         + ((ss+1)->cutoffCnt > 3)
-                        - (2 + (cutNode && ttData.depth >= depth + 3)) * (ss->ttPv && !likelyFailLow)
-                        - ((ss-1)->moveCount > 7)
-                        - 2 * PvNode;
+                        - (ss->ttPv * (1 + (ttData.value > alpha) + (ttData.depth >= depth)))
+                        - PvNode;
 
     bool allowLMR =     depth > 1
                     && !gameCycle
@@ -1162,8 +1152,9 @@ Value Search::Worker::search(
                     return ttData.value;
 
                 // Reduce non-singular moves where we expect to fail low
-                else if (ourMove && !gameCycle && !kingDangerThem && alpha < VALUE_MAX_EVAL && ttData.value < beta - 128)
-                    extension = (cutNode && (ss-1)->moveCount > 1 && !(ss-1)->secondaryLine) ? -2 : -1;
+                else if (    ourMove && !gameCycle && !kingDangerThem && cutNode && (ss-1)->moveCount > 1
+                         && !(ss-1)->secondaryLine && alpha < VALUE_MAX_EVAL && ttData.value < beta - 128)
+                    extension = -2;
             }
         }
 
@@ -1173,15 +1164,6 @@ Value Search::Worker::search(
             if (   givesCheck
                 && !gameCycle
                 && depth > 7)
-                extension = 1;
-
-            // Extension for capturing the previous moved piece (~1 Elo at LTC)
-            else if (   PvNode
-                     && move == ttData.move
-                     && move.to_sq() == prevSq
-                     && thisThread->captureHistory[movedPiece][move.to_sq()]
-                                                  [type_of(pos.piece_on(move.to_sq()))]
-                          > 4299)
                 extension = 1;
         }
 
@@ -1210,6 +1192,7 @@ Value Search::Worker::search(
 
         else
             r =     r
+                  + ((ttCapture && !capture) * (1 + depth < 8))
                   + lmrAdjustment
                   - ss->statScore / 11016;
 
