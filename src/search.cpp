@@ -676,8 +676,8 @@ Value Search::Worker::search(
 
                 if (    abs(v) <= drawScore
                     || !ss->ttHit
-                    || (v < -drawScore && alpha > tbValue)
-                    || (v >  drawScore && alpha < VALUE_MAX_EVAL))
+                    || (v < -drawScore &&  beta > -VALUE_MAX_EVAL)
+                    || (v >  drawScore && alpha <  VALUE_MAX_EVAL))
                 {
                     ttWriter.write(posKey, tbValue, ss->ttPv, v > drawScore ? BOUND_LOWER : v < -drawScore ? BOUND_UPPER : BOUND_EXACT,
                               v == 0 ? MAX_PLY : depth, Move::none(), VALUE_NONE, tt.generation());
@@ -834,10 +834,10 @@ Value Search::Worker::search(
            && (ttCapture || !ttData.move)
            // If we don't have a ttHit or our ttDepth is not greater our
            // reduced depth search, continue with the probcut.
-           && (!ss->ttHit || ttData.depth < depth - 3))
+           && (!ss->ttHit || (ttData.depth < depth - 3 && ttData.value >= probCutBeta && ttData.value != VALUE_NONE)))
        {
            assert(probCutBeta < VALUE_INFINITE);
-           MovePicker mp(pos, ttData.move, KnightValue - BishopValue + PieceValue[type_of(pos.captured_piece())],
+           MovePicker mp(pos, ttData.move, PieceValue[type_of(pos.captured_piece())] - PawnValue,
                          &captureHistory);
            Piece      captured;
 
@@ -860,12 +860,7 @@ Value Search::Worker::search(
 
                    pos.do_move(move, st);
 
-                   // Perform a preliminary qsearch to verify that the move holds
-                   value = -qsearch<NonPV>(pos, ss+1, -probCutBeta, -probCutBeta+1);
-
-                   // If the qsearch held perform the regular search
-                   if (value >= probCutBeta)
-                       value = -search<NonPV>(pos, ss+1, -probCutBeta, -probCutBeta+1, depth - 4, !cutNode);
+                   value = -search<NonPV>(pos, ss+1, -probCutBeta, -probCutBeta+1, depth - 4, !cutNode);
 
                    pos.undo_move(move);
 
