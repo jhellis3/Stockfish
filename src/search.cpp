@@ -301,7 +301,7 @@ void Search::Worker::iterative_deepening() {
             // Reset aspiration window starting size
             Value avg   = rootMoves[pvIdx].averageScore;
             int momentum = (int(avg) * avg) >> 14;
-            delta        = 5 + momentum;
+            delta        = 9;
 
             // Dynamic symmetric contempt. If we at least have a draw, we have contempt; otherwise assume opponent has it.
             if (rootMoves[0].averageScore >= VALUE_DRAW)
@@ -1165,7 +1165,7 @@ Value Search::Worker::search(
                     return ttData.value;
 
                 // Reduce non-singular moves where we expect to fail low
-                else if (    ourMove && !gameCycle && !kingDangerThem && cutNode && (ss-1)->moveCount > 1
+                else if (    ourMove && value < beta && !gameCycle && !kingDangerThem && cutNode && (ss-1)->moveCount > 1
                          && !(ss-1)->secondaryLine && alpha < VALUE_MAX_EVAL && ttData.value < beta - 128)
                     extension = -2;
             }
