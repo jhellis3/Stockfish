@@ -31,8 +31,8 @@
 #include <string_view>
 #include <vector>
 
+#include "history.h"
 #include "misc.h"
-#include "movepick.h"
 #include "nnue/network.h"
 #include "nnue/nnue_accumulator.h"
 #include "numa.h"
@@ -63,7 +63,7 @@ namespace Search {
 struct Stack {
     Move*           pv;
     PieceToHistory* continuationHistory;
-    PieceToCorrectionHistory* continuationCorrectionHistory;
+    CorrectionHistory<PieceTo>* continuationCorrectionHistory;
     uint16_t        ply;
     Move            currentMove;
     Move            excludedMove;
@@ -287,12 +287,11 @@ class Worker {
     ContinuationHistory   continuationHistory[2][2];
     PawnHistory           pawnHistory;
 
-    PawnCorrectionHistory         pawnCorrectionHistory;
-    MaterialCorrectionHistory     materialCorrectionHistory;
-    MajorPieceCorrectionHistory   majorPieceCorrectionHistory;
-    MinorPieceCorrectionHistory   minorPieceCorrectionHistory;
-    NonPawnCorrectionHistory      nonPawnCorrectionHistory[COLOR_NB];
-    ContinuationCorrectionHistory continuationCorrectionHistory;
+    CorrectionHistory<Pawn>         pawnCorrectionHistory;
+    CorrectionHistory<Major>        majorPieceCorrectionHistory;
+    CorrectionHistory<Minor>        minorPieceCorrectionHistory;
+    CorrectionHistory<NonPawn>      nonPawnCorrectionHistory[COLOR_NB];
+    CorrectionHistory<Continuation> continuationCorrectionHistory;
 
    private:
     void iterative_deepening();
