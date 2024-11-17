@@ -1114,7 +1114,7 @@ Value Search::Worker::search(
 
         // Step 15. Extensions (~100 Elo)
         if (gameCycleExtension)
-            extension = 1 + (PvNode && allowMultipleExt);
+            extension = 1 + (PvNode || ss->secondaryLine);
 
         // Singular extension search (~76 Elo, ~170 nElo). If all moves but one
         // fail low on a search of (alpha-s, beta-s), and just one fails high on
