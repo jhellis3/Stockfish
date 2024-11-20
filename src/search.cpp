@@ -601,7 +601,7 @@ Value Search::Worker::search(
                  : ttHit    ? ttData.move
                             : Move::none();
     ttData.value = ttHit ? value_from_tt(ttData.value, ss->ply) : VALUE_NONE;
-    ttData.value = (abs(ttData.value) > VALUE_MAX_EVAL || r50Count < 14) ? ttData.value : ((113 - r50Count) * ttData.value / 100);
+    ttData.value = (abs(ttData.value) > VALUE_MAX_EVAL) ? ttData.value : ((120 - r50Count) * ttData.value / 120);
     ss->ttPv     = excludedMove ? ss->ttPv : PvNode || (ttHit && ttData.is_pv);
     ttCapture    = ttData.move && pos.capture_stage(ttData.move);
 
@@ -1151,14 +1151,10 @@ Value Search::Worker::search(
 
                 // Reduce non-singular moves where we expect to fail low
                 else if (    ourMove && value < beta && !gameCycle && !kingDangerThem && cutNode && (ss-1)->moveCount > 1
-                         && !(ss-1)->secondaryLine && alpha < VALUE_MAX_EVAL && ttData.value < beta - 128)
+                         && !ss->secondaryLine && alpha < VALUE_MAX_EVAL && ttData.value < beta - 128)
                     extension = -2;
             }
         }
-
-        // Check extensions (~1 Elo)
-        if (allowExt && givesCheck && !gameCycle && depth > 7 && extension < 1)
-            extension = 1;
 
         // Add extension to new depth
         newDepth += extension;
@@ -1533,7 +1529,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     ss->ttHit    = ttHit;
     ttData.move  = ttHit ? ttData.move : Move::none();
     ttData.value = ttHit ? value_from_tt(ttData.value, ss->ply) : VALUE_NONE;
-    ttData.value = (abs(ttData.value) > VALUE_MAX_EVAL || r50Count < 14) ? ttData.value : ((113 - r50Count) * ttData.value / 100);
+    ttData.value = (abs(ttData.value) > VALUE_MAX_EVAL) ? ttData.value : ((120 - r50Count) * ttData.value / 120);
     pvHit        = ttHit && ttData.is_pv;
 
     // At non-PV nodes we check for an early TT cutoff
