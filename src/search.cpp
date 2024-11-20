@@ -22,14 +22,10 @@
 #include <array>
 #include <atomic>
 #include <cassert>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
-#include <iostream>
-#include <list>
-#include <ratio>
 #include <string>
 #include <utility>
 #include "bitboard.h"
@@ -925,9 +921,7 @@ Value Search::Worker::search(
 
     int moveCount = 0;
 
-    bool allowExt = depth + ss->ply + 2 < MAX_PLY;
-
-    bool allowMultipleExt = ss->ply < 2 * rootDepth;
+    bool allowExt = (depth + ss->ply + 2 < MAX_PLY) && (ss->ply < 2 * rootDepth);
 
     bool lmrCapture = cutNode && (ss-1)->moveCount > 1;
 
@@ -1137,14 +1131,12 @@ Value Search::Worker::search(
             {
                 int doubleMargin = 249 * PvNode - 194 * !ttCapture;
 
-                extension = 1;
+                int tripleMargin = 94 + 287 * PvNode - 249 * !ttCapture + 99 * ss->ttPv;
 
-                if (allowMultipleExt)
-                {
-                    extension += (value < singularBeta - doubleMargin);
+                extension = 1 + (value < singularBeta - doubleMargin)
+                              + (value < singularBeta - tripleMargin);
 
-                    depth += (!PvNode && (depth < 14));
-                }
+                depth += (!PvNode && (depth < 14));
             }
 
             // Multi-cut pruning
@@ -1164,14 +1156,9 @@ Value Search::Worker::search(
             }
         }
 
-        if (allowExt && extension < 1)
-        {
-            // Check extensions (~1 Elo)
-            if (   givesCheck
-                && !gameCycle
-                && depth > 7)
-                extension = 1;
-        }
+        // Check extensions (~1 Elo)
+        if (allowExt && givesCheck && !gameCycle && depth > 7 && extension < 1)
+            extension = 1;
 
         // Add extension to new depth
         newDepth += extension;
@@ -1203,6 +1190,9 @@ Value Search::Worker::search(
                   + ((ttCapture && !capture) * (1 + depth < 8))
                   + lmrAdjustment
                   - ss->statScore / 13030;
+
+        if (r < 0 && !allowExt)
+            r = 0;
 
         // Step 17. Late moves reduction / extension (LMR, ~117 Elo)
         // We use various heuristics for the sons of a node after the first son has
