@@ -500,9 +500,6 @@ Value Search::Worker::search(
     if (depth <= 0)
         return qsearch < PvNode ? PV : NonPV > (pos, ss, alpha, beta);
 
-    // Limit the depth if extensions made it too large
-    depth = std::min(depth, MAX_PLY - 1);
-
     assert(-VALUE_INFINITE <= alpha && alpha < beta && beta <= VALUE_INFINITE);
     assert(PvNode || (alpha == beta - 1));
     assert(0 < depth && depth < MAX_PLY);
@@ -540,6 +537,9 @@ Value Search::Worker::search(
     ss->mainLine        = false;
     r50Count            = pos.rule50_count();
     drawValue           = contempt[us];
+
+    // Limit the depth if extensions made it too large
+    depth = std::min(depth, rootDepth);
 
     // Check for the available remaining time
     if (is_mainthread())
@@ -933,16 +933,6 @@ Value Search::Worker::search(
 
     bool kingDangerThem = ourMove && pos.king_danger(~us);
 
-    int lmrAdjustment =   cutNode * 2
-                        + ((ss+1)->cutoffCnt > 3)
-                        - (ss->ttPv * (1 + (ttData.value > alpha) + (ttData.depth >= depth)))
-                        - PvNode;
-
-    bool allowLMR =     depth > 1
-                    && !gameCycle
-                    && (!kingDangerThem || ss->ply > 6)
-                    && (!PvNode || ss->ply > 1);
-
     bool doSingular =    !rootNode
                       && !excludedMove // Avoid recursive singular search
                       &&  ttData.value != VALUE_NONE
@@ -951,6 +941,17 @@ Value Search::Worker::search(
                       &&  ttData.value > -VALUE_MAX_EVAL / 2
                       &&  ttData.depth >= depth - 3
                       &&  depth >= 4 - (thisThread->completedDepth > 32) + ss->ttPv;
+
+    int lmrAdjustment =   cutNode * 2
+                        + ((ss+1)->cutoffCnt > 3)
+                        - (!PvNode && doSingular)/*tune*/
+                        - (ss->ttPv * (1 + (ttData.value > alpha) + (ttData.depth >= depth)))
+                        - PvNode;
+
+    bool allowLMR =     depth > 1
+                    && !gameCycle
+                    && (!kingDangerThem || ss->ply > 6)
+                    && (!PvNode || ss->ply > 1);
 
     bool doLMP =     ss->ply > 2
                  && !PvNode
@@ -1119,7 +1120,7 @@ Value Search::Worker::search(
         else if (    doSingular
                  &&  move == ttData.move)
         {
-            Value singularBeta = std::max(ttData.value - (56 + 79 * (ss->ttPv && !PvNode)) * depth / 64, -VALUE_MAX_EVAL);
+            Value singularBeta = std::max(ttData.value - 24 - (56 + 79 * (ss->ttPv && !PvNode)) * depth / 64, -VALUE_MAX_EVAL);
             Depth singularDepth = newDepth / 2;
 
             ss->excludedMove = move;
@@ -1128,16 +1129,7 @@ Value Search::Worker::search(
             ss->excludedMove = Move::none();
 
             if (allowExt && value < singularBeta && (ttData.value > beta - 128 || !ourMove))
-            {
-                int doubleMargin = 249 * PvNode - 194 * !ttCapture;
-
-                int tripleMargin = 94 + 287 * PvNode - 249 * !ttCapture + 99 * ss->ttPv;
-
-                extension = 1 + (value < singularBeta - doubleMargin)
-                              + (value < singularBeta - tripleMargin);
-
-                depth += (!PvNode && (depth < 14));
-            }
+                extension = 1 + (!PvNode || !ttCapture) * (1 + (value < singularBeta - 320));
 
             // Multi-cut pruning
             // Our ttMove is assumed to fail high based on the bound of the TT entry,
