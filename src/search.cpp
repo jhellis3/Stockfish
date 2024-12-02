@@ -1129,7 +1129,7 @@ Value Search::Worker::search(
             ss->excludedMove = Move::none();
 
             if (allowExt && value < singularBeta && (ttData.value > beta - 128 || !ourMove))
-                extension = 1 + (!PvNode || !ttCapture) * (1 + (value < singularBeta - 320));
+                extension = 1 + (!PvNode || !ttCapture) * (1 + (value < singularBeta - 224));
 
             // Multi-cut pruning
             // Our ttMove is assumed to fail high based on the bound of the TT entry,

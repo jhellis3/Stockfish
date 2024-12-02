@@ -49,6 +49,8 @@ Value Eval::evaluate(const Eval::NNUE::Networks&    networks,
 
     Value v = (125 * psqt + 131 * positional) / 128;
 
+    v = (v * 4) / 3; // Approximate SF eval scale
+
     v = v * (100 - r50) / 100;
 
     v += contempt;
