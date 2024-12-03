@@ -665,8 +665,8 @@ Value Search::Worker::search(
 
                 if (    abs(v) <= drawScore
                     || !ss->ttHit
-                    || (v < -drawScore &&  beta > -VALUE_MAX_EVAL)
-                    || (v >  drawScore && alpha <  VALUE_MAX_EVAL))
+                    || (v < -drawScore &&  beta > tbValue + 9)
+                    || (v >  drawScore && alpha < tbValue - 9))
                 {
                     ttWriter.write(posKey, tbValue, ss->ttPv, v > drawScore ? BOUND_LOWER : v < -drawScore ? BOUND_UPPER : BOUND_EXACT,
                               v == 0 ? MAX_PLY : depth, Move::none(), VALUE_NONE, tt.generation());
@@ -1373,7 +1373,7 @@ Value Search::Worker::search(
         bestValue = (bestValue * depth + beta) / (depth + 1);
 
     if (!moveCount)
-        bestValue = excludedMove ? alpha : ss->inCheck ? mated_in(ss->ply) : drawValue;
+        bestValue = excludedMove ? alpha : ss->inCheck ? mated_in(ss->ply) : contempt[~us];
 
     // If there is a move that produces search value greater than alpha,
     // we update the stats of searched moves.
