@@ -937,7 +937,7 @@ Value Search::Worker::search(
                       &&  ttData.value != VALUE_NONE
                       && (ttData.bound & BOUND_LOWER)
                       &&  alpha > -VALUE_MAX_EVAL
-                      &&  ttData.value > -VALUE_MAX_EVAL / 2
+                      &&  abs(ttData.value) < VALUE_MAX_EVAL
                       &&  ttData.depth >= depth - 3
                       &&  depth >= 4 - (thisThread->completedDepth > 32) + ss->ttPv;
 
@@ -1102,7 +1102,7 @@ Value Search::Worker::search(
 
         // Step 15. Extensions (~100 Elo)
         if (gameCycleExtension)
-            extension = 1 + (PvNode || ss->secondaryLine);
+            extension = 1 + ((PvNode || ss->secondaryLine) && abs(beta) < VALUE_MAX_EVAL);
 
         // Singular extension search (~76 Elo, ~170 nElo). If all moves but one
         // fail low on a search of (alpha-s, beta-s), and just one fails high on
@@ -1142,7 +1142,7 @@ Value Search::Worker::search(
 
                 // Reduce non-singular moves where we expect to fail low
                 else if (    ourMove && value < beta && !gameCycle && !kingDangerThem && cutNode && (ss-1)->moveCount > 1
-                         && !ss->secondaryLine && alpha < VALUE_MAX_EVAL && ttData.value < beta - 128)
+                         && !ss->secondaryLine && beta < VALUE_MAX_EVAL / 16 && ttData.value < beta - 128)
                     extension = -2;
             }
         }
@@ -1224,7 +1224,7 @@ Value Search::Worker::search(
         else if (!PvNode || moveCount > 1)
         {
             // Increase reduction if ttMove is not present (~6 Elo)
-            if (!ttData.move)
+            if (!ttData.move && abs(beta) < VALUE_MAX_EVAL / 16)
                 r += 2;
 
             // Note that if expected reduction is high, we reduce search depth by 1 here (~9 Elo)
@@ -1339,8 +1339,8 @@ Value Search::Worker::search(
                         && depth < 14
                         && !gameCycle
                         && abs(value) < VALUE_MAX_EVAL
-                        && beta  <  VALUE_MAX_EVAL
-                        && alpha > -VALUE_MAX_EVAL)
+                        && beta  <  VALUE_MAX_EVAL / 16
+                        && alpha > -VALUE_MAX_EVAL / 16)
                         depth -= 1; // try 2
 
                     assert(depth > 0);
