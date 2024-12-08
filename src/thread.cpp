@@ -335,13 +335,13 @@ Thread* ThreadPool::get_best_thread() const {
         const auto bestThreadMoveVote = votes[bestThreadPV[0]];
         const auto newThreadMoveVote  = votes[newThreadPV[0]];
 
-        const bool bestThreadInProvenWin = bestThreadScore > VALUE_MAX_EVAL;
-        const bool newThreadInProvenWin  = newThreadScore > VALUE_MAX_EVAL;
+        const bool bestThreadInProvenWin = is_win(bestThreadScore);
+        const bool newThreadInProvenWin  = is_win(newThreadScore);
 
         const bool bestThreadInProvenLoss =
-          bestThreadScore != -VALUE_INFINITE && bestThreadScore < -VALUE_MAX_EVAL;
+          bestThreadScore != -VALUE_INFINITE && is_loss(bestThreadScore);
         const bool newThreadInProvenLoss =
-          newThreadScore != -VALUE_INFINITE && newThreadScore < -VALUE_MAX_EVAL;
+          newThreadScore != -VALUE_INFINITE && is_loss(newThreadScore);
 
         // We make sure not to pick a thread with truncated principal variation
         const bool betterVotingValue =
@@ -361,7 +361,7 @@ Thread* ThreadPool::get_best_thread() const {
                 bestThread = th.get();
         }
         else if (newThreadInProvenWin || newThreadInProvenLoss
-                 || (newThreadScore > -VALUE_MAX_EVAL
+                 || (!is_loss(newThreadScore)
                      && (newThreadMoveVote > bestThreadMoveVote
                          || (newThreadMoveVote == bestThreadMoveVote && betterVotingValue))))
             bestThread = th.get();

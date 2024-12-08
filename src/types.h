@@ -151,6 +151,24 @@ constexpr Value VALUE_MATE             = 32000;
 constexpr Value VALUE_MATE_IN_MAX_PLY  = VALUE_MATE - MAX_PLY;
 constexpr Value VALUE_MATED_IN_MAX_PLY = -VALUE_MATE_IN_MAX_PLY;
 
+constexpr Value tbConversionFactor = VALUE_MATE_IN_MAX_PLY / 100;
+constexpr Value VALUE_TB_WIN         = 101 * tbConversionFactor;
+constexpr Value VALUE_MAX_EVAL       = VALUE_TB_WIN - 17 * tbConversionFactor;
+
+constexpr bool is_valid(Value value) { return value != VALUE_NONE; }
+
+constexpr bool is_win(Value value) {
+    assert(is_valid(value));
+    return value > VALUE_MAX_EVAL;
+}
+
+constexpr bool is_loss(Value value) {
+    assert(is_valid(value));
+    return value < -VALUE_MAX_EVAL;
+}
+
+constexpr bool is_decisive(Value value) { return is_win(value) || is_loss(value); }
+
 // In the code, we make the assumption that these values
 // are such that non_pawn_material() can be used to uniquely
 // identify the material on the board.
@@ -159,10 +177,6 @@ constexpr Value KnightValue = 781;
 constexpr Value BishopValue = 825;
 constexpr Value RookValue   = 1276;
 constexpr Value QueenValue  = 2538;
-
-constexpr Value tbConversionFactor = VALUE_MATE_IN_MAX_PLY / 100;
-constexpr Value VALUE_TB_WIN         = 101 * tbConversionFactor;
-constexpr Value VALUE_MAX_EVAL       = VALUE_TB_WIN - 17 * tbConversionFactor;
 
 
 // clang-format off

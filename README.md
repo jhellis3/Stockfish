@@ -60,6 +60,11 @@ where the source code can be found) to generate the exact binary you are
 distributing. If you make any changes to the source code, these changes must
 also be made available under GPL v3.
 
+## Acknowledgements
+
+Stockfish uses neural networks trained on [data provided by the Leela Chess Zero
+project][lc0-data-link], which is made available under the [Open Database License][odbl-link] (ODbL).
+
 
 [authors-link]:       https://github.com/official-stockfish/Stockfish/blob/master/AUTHORS
 [build-link]:         https://github.com/jhellis3/Stockfish/actions/workflows/stockfish.yml
@@ -74,6 +79,8 @@ also be made available under GPL v3.
 [uci-link]:           https://backscattering.de/chess/uci/
 [website-link]:       https://stockfishchess.org
 [website-blog-link]:  https://stockfishchess.org/blog/
+[lc0-data-link]:      https://storage.lczero.org/files/training_data
+[odbl-link]:          https://opendatacommons.org/licenses/odbl/odbl-10.txt
 
 [build-badge]:        https://img.shields.io/github/actions/workflow/status/jhellis3/Stockfish/stockfish.yml?branch=crystal&style=for-the-badge&label=crystal&logo=github
 [commits-badge]:      https://img.shields.io/github/commits-since/official-stockfish/Stockfish/latest?style=for-the-badge
