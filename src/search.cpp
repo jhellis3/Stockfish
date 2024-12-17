@@ -500,6 +500,9 @@ Value Search::Worker::search(
     if (depth <= 0)
         return qsearch < PvNode ? PV : NonPV > (pos, ss, alpha, beta);
 
+    // Limit the depth if extensions made it too large
+    depth = std::min(depth, MAX_PLY - 1);
+
     assert(-VALUE_INFINITE <= alpha && alpha < beta && beta <= VALUE_INFINITE);
     assert(PvNode || (alpha == beta - 1));
     assert(0 < depth && depth < MAX_PLY);
@@ -537,9 +540,6 @@ Value Search::Worker::search(
     ss->mainLine        = false;
     r50Count            = pos.rule50_count();
     drawValue           = contempt[us];
-
-    // Limit the depth if extensions made it too large
-    depth = std::min(depth, rootDepth);
 
     // Check for the available remaining time
     if (is_mainthread())
