@@ -164,6 +164,9 @@ void MovePicker::score() {
             m.value += (*continuationHistory[3])[pc][to];
             m.value += (*continuationHistory[5])[pc][to];
 
+            if (pt == PAWN)
+                m.value += 16384;
+
             // bonus for checks
             m.value += bool(pos.check_squares(pt) & to) * 16384;
 

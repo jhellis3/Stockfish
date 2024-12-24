@@ -601,7 +601,6 @@ Value Search::Worker::search(
                  : ttHit    ? ttData.move
                             : Move::none();
     ttData.value = ttHit ? value_from_tt(ttData.value, ss->ply) : VALUE_NONE;
-    ttData.value = is_decisive(ttData.value) ? ttData.value : ((120 - r50Count) * ttData.value / 120);
     ss->ttPv     = excludedMove ? ss->ttPv : PvNode || (ttHit && ttData.is_pv);
     ttCapture    = ttData.move && pos.capture_stage(ttData.move);
 
@@ -925,10 +924,8 @@ Value Search::Worker::search(
     bool lmrCapture = cutNode && (ss-1)->moveCount > 1;
 
     bool gameCycleExtension =    gameCycle
-                              && allowExt
-                              && (   PvNode
-                                  || (ss-1)->mainLine
-                                  || ((ss-1)->secondaryLine && thisThread->pvValue < drawValue));
+                              && (   ( ourMove && PvNode)
+                                  || (!ourMove && (ss-1)->secondaryLine && thisThread->pvValue < drawValue));
 
     bool kingDangerThem = ourMove && pos.king_danger(~us);
 
@@ -939,7 +936,8 @@ Value Search::Worker::search(
                       && !is_loss(alpha)
                       && !is_decisive(ttData.value)
                       &&  ttData.depth >= depth - 3
-                      &&  depth >= 4 - (thisThread->completedDepth > 32) + ss->ttPv;
+                      &&  depth >= 4 - (thisThread->completedDepth > 32) + ss->ttPv
+                      && !(ttData.value >= VALUE_DRAW && MoveList<LEGAL>(pos).size() == 1);
 
     int lmrAdjustment =   cutNode * 2
                         + ((ss+1)->cutoffCnt > 3)
@@ -1063,9 +1061,11 @@ Value Search::Worker::search(
                 }
 
                 // SEE based pruning for captures and checks (~11 Elo)
-                int seeHist = std::clamp(captHist / 33, -161 * depth, 156 * depth);
-                if (!pos.see_ge(move, -162 * depth - seeHist))
+                if (depth < 7 && !pos.see_ge(move, -182 * depth))
                     continue;
+
+                if (!pos.see_ge(move, -1195))
+                    extension = -2;
             }
             else
             {
@@ -1095,14 +1095,17 @@ Value Search::Worker::search(
                 lmrDepth = std::max(lmrDepth, 0);
 
                 // Prune moves with negative SEE (~4 Elo)
-                if (!pos.see_ge(move, -25 * lmrDepth * lmrDepth))
+                if (depth < 7 && !pos.see_ge(move, -25 * lmrDepth * lmrDepth))
                     continue;
+
+                if (!pos.see_ge(move, -1195))
+                    extension = -2;
             }
         }
 
         // Step 15. Extensions (~100 Elo)
-        if (gameCycleExtension)
-            extension = 1 + ((PvNode || ss->secondaryLine) && !is_decisive(beta));
+        if (gameCycleExtension && extension >= 0)
+            extension = 2;
 
         // Singular extension search (~76 Elo, ~170 nElo). If all moves but one
         // fail low on a search of (alpha-s, beta-s), and just one fails high on
@@ -1135,16 +1138,8 @@ Value Search::Worker::search(
             // and if after excluding the ttMove with a reduced search we fail high over the original beta,
             // we assume this expected cut-node is not singular (multiple moves fail high),
             // and we can prune the whole subtree by returning a softbound.
-            else if (value >= singularBeta && !PvNode)
-            {
-                if (ttData.value >= beta && value >= beta)
-                    return ttData.value;
-
-                // Reduce non-singular moves where we expect to fail low
-                else if (    ourMove && value < beta && !gameCycle && !kingDangerThem && cutNode && (ss-1)->moveCount > 1
-                         && !ss->secondaryLine && beta < VALUE_MAX_EVAL / 16 && ttData.value < beta - 128)
-                    extension = -2;
-            }
+            else if (!PvNode && value >= singularBeta && ttData.value >= beta && value >= beta)
+                return ttData.value;
         }
 
         // Add extension to new depth
@@ -1536,7 +1531,6 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     ss->ttHit    = ttHit;
     ttData.move  = ttHit ? ttData.move : Move::none();
     ttData.value = ttHit ? value_from_tt(ttData.value, ss->ply) : VALUE_NONE;
-    ttData.value = is_decisive(ttData.value) ? ttData.value : ((120 - r50Count) * ttData.value / 120);
     pvHit        = ttHit && ttData.is_pv;
 
     // At non-PV nodes we check for an early TT cutoff

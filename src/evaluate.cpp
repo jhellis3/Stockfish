@@ -44,7 +44,7 @@ Value Eval::evaluate(const Eval::NNUE::Networks&    networks,
 
     assert(!pos.checkers());
 
-    r50                     = std::min(75, r50);
+    r50                     = std::min(90, r50);
     auto [psqt, positional] = networks.big.evaluate(pos, &caches.big);
 
     Value v = (125 * psqt + 131 * positional) / 128;
