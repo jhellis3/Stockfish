@@ -1,5 +1,5 @@
 # Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-# Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
+# Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 #
 # Stockfish is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -55,7 +55,8 @@ PGOBENCH = $(WINE_PATH) ./$(EXE) bench
 SRCS = benchmark.cpp bitboard.cpp evaluate.cpp main.cpp \
 	misc.cpp movegen.cpp movepick.cpp position.cpp \
 	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp \
-	nnue/nnue_misc.cpp nnue/features/half_ka_v2_hm.cpp nnue/network.cpp engine.cpp score.cpp memory.cpp
+	nnue/nnue_accumulator.cpp nnue/nnue_misc.cpp nnue/features/half_ka_v2_hm.cpp nnue/network.cpp \
+	engine.cpp score.cpp memory.cpp
 
 HEADERS = benchmark.h bitboard.h evaluate.h misc.h movegen.h movepick.h history.h \
 		nnue/nnue_misc.h nnue/features/half_ka_v2_hm.h nnue/layers/affine_transform.h \

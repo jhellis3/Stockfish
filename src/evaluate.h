@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -39,12 +39,14 @@ namespace Eval {
 namespace NNUE {
 struct Networks;
 struct AccumulatorCaches;
+class AccumulatorStack;
 }
 
 std::string trace(Position& pos, const Eval::NNUE::Networks& networks);
 
 Value evaluate(const NNUE::Networks&          networks,
                const Position&                pos,
+               Eval::NNUE::AccumulatorStack&  accumulators,
                Eval::NNUE::AccumulatorCaches& caches,
                int                            contempt,
                int                            r50);

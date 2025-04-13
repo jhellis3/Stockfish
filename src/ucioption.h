@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -54,12 +54,13 @@ class Option {
 
     friend std::ostream& operator<<(std::ostream&, const OptionsMap&);
 
+    int operator<<(const Option&) = delete;
+
    private:
     friend class OptionsMap;
     friend class Engine;
     friend class Tune;
 
-    void operator<<(const Option&);
 
     std::string       defaultValue, currentValue, type;
     int               min, max;
@@ -82,8 +83,9 @@ class OptionsMap {
 
     void setoption(std::istringstream&);
 
-    Option  operator[](const std::string&) const;
-    Option& operator[](const std::string&);
+    const Option& operator[](const std::string&) const;
+
+    void add(const std::string&, const Option& option);
 
     std::size_t count(const std::string&) const;
 

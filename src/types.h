@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -38,6 +38,7 @@
 
     #include <cassert>
     #include <cstdint>
+    #include <type_traits>
 
     #if defined(_MSC_VER)
         // Disable some silly and noisy warnings from MSVC compiler
@@ -288,8 +289,8 @@ struct DirtyPiece {
 };
 
     #define ENABLE_INCR_OPERATORS_ON(T) \
-        inline T& operator++(T& d) { return d = T(int(d) + 1); } \
-        inline T& operator--(T& d) { return d = T(int(d) - 1); }
+        constexpr T& operator++(T& d) { return d = T(int(d) + 1); } \
+        constexpr T& operator--(T& d) { return d = T(int(d) - 1); }
 
 ENABLE_INCR_OPERATORS_ON(PieceType)
 ENABLE_INCR_OPERATORS_ON(Square)
@@ -302,10 +303,10 @@ constexpr Direction operator+(Direction d1, Direction d2) { return Direction(int
 constexpr Direction operator*(int i, Direction d) { return Direction(i * int(d)); }
 
 // Additional operators to add a Direction to a Square
-constexpr Square operator+(Square s, Direction d) { return Square(int(s) + int(d)); }
-constexpr Square operator-(Square s, Direction d) { return Square(int(s) - int(d)); }
-inline Square&   operator+=(Square& s, Direction d) { return s = s + d; }
-inline Square&   operator-=(Square& s, Direction d) { return s = s - d; }
+constexpr Square  operator+(Square s, Direction d) { return Square(int(s) + int(d)); }
+constexpr Square  operator-(Square s, Direction d) { return Square(int(s) - int(d)); }
+constexpr Square& operator+=(Square& s, Direction d) { return s = s + d; }
+constexpr Square& operator-=(Square& s, Direction d) { return s = s - d; }
 
 // Toggle color
 constexpr Color operator~(Color c) { return Color(c ^ BLACK); }
@@ -333,7 +334,7 @@ constexpr Piece make_piece(Color c, PieceType pt) { return Piece((c << 3) + pt);
 
 constexpr PieceType type_of(Piece pc) { return PieceType(pc & 7); }
 
-inline Color color_of(Piece pc) {
+constexpr Color color_of(Piece pc) {
     assert(pc != NO_PIECE);
     return Color(pc >> 3);
 }
@@ -427,6 +428,14 @@ class Move {
    protected:
     std::uint16_t data;
 };
+
+template<typename T, typename... Ts>
+struct is_all_same {
+    static constexpr bool value = (std::is_same_v<T, Ts> && ...);
+};
+
+template<typename... Ts>
+constexpr auto is_all_same_v = is_all_same<Ts...>::value;
 
 }  // namespace Stockfish
 

@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -134,7 +134,7 @@ ExtMove* generate_pawn_moves(const Position& pos, ExtMove* moveList, Bitboard ta
             if (Type == EVASIONS && (target & (pos.ep_square() + Up)))
                 return moveList;
 
-            b1 = pawnsNotOn7 & pawn_attacks_bb(Them, pos.ep_square());
+            b1 = pawnsNotOn7 & attacks_bb<PAWN>(pos.ep_square(), Them);
 
             assert(b1);
 

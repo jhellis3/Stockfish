@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -18,11 +18,11 @@
 
 #include "movepick.h"
 
-#include <array>
 #include <cassert>
 #include <limits>
 
 #include "bitboard.h"
+#include "misc.h"
 #include "position.h"
 
 namespace Stockfish {
@@ -162,6 +162,7 @@ void MovePicker::score() {
             m.value += (*continuationHistory[1])[pc][to];
             m.value += (*continuationHistory[2])[pc][to];
             m.value += (*continuationHistory[3])[pc][to];
+            m.value += (*continuationHistory[4])[pc][to] / 3;
             m.value += (*continuationHistory[5])[pc][to];
 
             if (pt == PAWN)
@@ -178,7 +179,7 @@ void MovePicker::score() {
                                                : 0;
 
             // malus for putting piece en prise
-            m.value -= (pt == QUEEN ? bool(to & threatenedByRook) * 49000
+            m.value -= (pt == QUEEN && bool(to & threatenedByRook)   ? 49000
                         : pt == ROOK && bool(to & threatenedByMinor) ? 24335
                                                                      : 0);
 
@@ -189,8 +190,7 @@ void MovePicker::score() {
         else  // Type == EVASIONS
         {
             if (pos.capture_stage(m))
-                m.value =
-                  PieceValue[pos.piece_on(m.to_sq())] - type_of(pos.moved_piece(m)) + (1 << 28);
+                m.value = PieceValue[pos.piece_on(m.to_sq())] + (1 << 28);
             else
                 m.value = (*mainHistory)[pos.side_to_move()][m.from_to()]
                         + (*continuationHistory[0])[pos.moved_piece(m)][m.to_sq()]

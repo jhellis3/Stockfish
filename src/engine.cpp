@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2024 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -18,6 +18,7 @@
 
 #include "engine.h"
 
+#include <algorithm>
 #include <cassert>
 #include <deque>
 #include <iosfwd>
@@ -32,6 +33,7 @@
 #include "misc.h"
 #include "nnue/network.h"
 #include "nnue/nnue_common.h"
+#include "numa.h"
 #include "perft.h"
 #include "position.h"
 #include "search.h"
@@ -44,8 +46,9 @@ namespace Stockfish {
 
 namespace NN = Eval::NNUE;
 
-constexpr auto StartFEN  = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-constexpr int  MaxHashMB = Is64Bit ? 33554432 : 2048;
+constexpr auto StartFEN   = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+constexpr int  MaxHashMB  = Is64Bit ? 33554432 : 2048;
+int            MaxThreads = std::max(1024, 4 * int(get_hardware_concurrency()));
 
 Engine::Engine(std::optional<std::string> path) :
     binaryDirectory(path ? CommandLine::get_binary_directory(*path) : ""),
@@ -59,53 +62,78 @@ Engine::Engine(std::optional<std::string> path) :
         NN::NetworkSmall({EvalFileDefaultNameSmall, "None", ""}, NN::EmbeddedNNUEType::SMALL))) {
     pos.set(StartFEN, false, &states->back());
 
-    options["Debug Log File"] << Option("", [](const Option& o) {
-        start_logger(o);
-        return std::nullopt;
-    });
 
-    options["NumaPolicy"] << Option("auto", [this](const Option& o) {
-        set_numa_config_from_option(o);
-        return numa_config_information_as_string() + "\n"
-             + thread_allocation_information_as_string();
-    });
+    options.add(  //
+      "Debug Log File", Option("", [](const Option& o) {
+          start_logger(o);
+          return std::nullopt;
+      }));
 
-    options["Threads"] << Option(1, 1, 1024, [this](const Option&) {
-        resize_threads();
-        return thread_allocation_information_as_string();
-    });
+    options.add(  //
+      "NumaPolicy", Option("auto", [this](const Option& o) {
+          set_numa_config_from_option(o);
+          return numa_config_information_as_string() + "\n"
+               + thread_allocation_information_as_string();
+      }));
 
-    options["Hash"] << Option(16, 1, MaxHashMB, [this](const Option& o) {
-        set_tt_size(o);
-        return std::nullopt;
-    });
+    options.add(  //
+      "Threads", Option(1, 1, MaxThreads, [this](const Option&) {
+          resize_threads();
+          return thread_allocation_information_as_string();
+      }));
 
-    options["Clear Hash"] << Option([this](const Option&) {
-        search_clear();
-        return std::nullopt;
-    });
-    options["Clean Search"] << Option(false);
-    options["Ponder"] << Option(false);
-    options["MultiPV"] << Option(1, 1, MAX_MOVES);
-    options["Contempt"] << Option(20, 0, 100);
-    options["Move Overhead"] << Option(10, 0, 5000);
-    options["nodestime"] << Option(0, 0, 10000);
-    options["UCI_Chess960"] << Option(false);
-    options["UCI_ShowWDL"] << Option(false);
-    options["SyzygyPath"] << Option("", [](const Option& o) {
-        Tablebases::init(o);
-        return std::nullopt;
-    });
-    options["Syzygy50MoveRule"] << Option(true);
-    options["SyzygyProbeLimit"] << Option(7, 0, 7);
-    options["EvalFile"] << Option(EvalFileDefaultNameBig, [this](const Option& o) {
-        load_big_network(o);
-        return std::nullopt;
-    });
-    options["EvalFileSmall"] << Option(EvalFileDefaultNameSmall, [this](const Option& o) {
-        load_small_network(o);
-        return std::nullopt;
-    });
+    options.add(  //
+      "Hash", Option(16, 1, MaxHashMB, [this](const Option& o) {
+          set_tt_size(o);
+          return std::nullopt;
+      }));
+
+    options.add(  //
+      "Clear Hash", Option([this](const Option&) {
+          search_clear();
+          return std::nullopt;
+      }));
+
+    options.add(  //
+      "Clean Search", Option(false));
+
+    options.add(  //
+      "Ponder", Option(false));
+
+    options.add(  //
+      "MultiPV", Option(1, 1, MAX_MOVES));
+
+    options.add("Contempt", Option(20, 0, 100));
+
+    options.add("Move Overhead", Option(10, 0, 5000));
+
+    options.add("nodestime", Option(0, 0, 10000));
+
+    options.add("UCI_Chess960", Option(false));
+
+    options.add("UCI_ShowWDL", Option(false));
+
+    options.add(  //
+      "SyzygyPath", Option("", [](const Option& o) {
+          Tablebases::init(o);
+          return std::nullopt;
+      }));
+
+    options.add("Syzygy50MoveRule", Option(true));
+
+    options.add("SyzygyProbeLimit", Option(7, 0, 7));
+
+    options.add(  //
+      "EvalFile", Option(EvalFileDefaultNameBig, [this](const Option& o) {
+          load_big_network(o);
+          return std::nullopt;
+      }));
+
+    options.add(  //
+      "EvalFileSmall", Option(EvalFileDefaultNameSmall, [this](const Option& o) {
+          load_small_network(o);
+          return std::nullopt;
+      }));
 
     load_networks();
     resize_threads();
@@ -336,5 +364,4 @@ std::string Engine::thread_allocation_information_as_string() const {
 
     return ss.str();
 }
-
 }
