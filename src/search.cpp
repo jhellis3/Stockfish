@@ -543,8 +543,6 @@ void Search::Worker::clear() {
     minorPieceCorrectionHistory.fill(0);
     nonPawnCorrectionHistory.fill(0);
 
-    ttMoveHistory.fill(0);
-
     for (auto& to : continuationCorrectionHistory)
         for (auto& h : to)
             h.fill(5);
@@ -1098,14 +1096,6 @@ Value Search::Worker::search(
 
         Depth r = reduction(improving, depth, moveCount, delta);
 
-        r -= moveCount / 32;
-
-        // Increase reduction for ttPv nodes (*Scaler)
-        // Smaller or even negative value is better for short time controls
-        // Bigger value is better for long time controls
-        if (ss->ttPv)
-            r += 1;
-
         // Step 14. Pruning at shallow depth.
         // Depth conditions are important for mate finding.
         if (   doLMP
@@ -1116,7 +1106,7 @@ Value Search::Worker::search(
                 mp.skip_quiet_moves();
 
             // Reduced depth of the next LMR search
-            int lmrDepth = newDepth - r;
+            int lmrDepth = std::max(newDepth - r, newDepth - 4);
 
             if (   capture
                 || givesCheck)
@@ -1135,11 +1125,8 @@ Value Search::Worker::search(
                 }
 
                 // SEE based pruning for captures and checks (~11 Elo)
-                if (depth < 7 && !pos.see_ge(move, -182 * depth))
+                if (depth < 11 && !pos.see_ge(move, -182 * depth))
                     continue;
-
-                if (!pos.see_ge(move, -1195))
-                    extension = -2;
             }
             else
             {
@@ -1169,11 +1156,8 @@ Value Search::Worker::search(
                 lmrDepth = std::max(lmrDepth, 0);
 
                 // Prune moves with negative SEE (~4 Elo)
-                if (depth < 7 && !pos.see_ge(move, -27 * lmrDepth * lmrDepth))
+                if (!pos.see_ge(move, -27 * lmrDepth * lmrDepth))
                     continue;
-
-                if (!pos.see_ge(move, -1195))
-                    extension = -2;
             }
         }
 
@@ -1246,13 +1230,13 @@ Value Search::Worker::search(
                                - 3271;
 
         if (move == ttData.move)
-            r =   -ss->statScore / 13030;
+            r =   -ss->statScore / 10605;
 
         else
             r =     r
                   + ((ttCapture && !capture) * (1 + depth < 8))
                   + lmrAdjustment
-                  - ss->statScore / 13030; // crystal9 ~11000?
+                  - ss->statScore / 10605;
 
         r -= std::min(std::abs(correctionValue) / 30408704, 2);
 
@@ -1463,15 +1447,8 @@ Value Search::Worker::search(
     // If there is a move that produces search value greater than alpha,
     // we update the stats of searched moves.
     else if (bestMove)
-    {
         update_all_stats(pos, ss, *this, bestMove, prevSq, quietsSearched, capturesSearched, depth,
                          bestMove == ttData.move, moveCount);
-        if (!PvNode)
-        {
-            int bonus = (ttData.move == move) ? 800 : -600 * moveCount;
-            ttMoveHistory[pawn_structure_index(pos)][us] << bonus;
-        }
-    }
 
     // Bonus for prior quiet countermove that caused the fail low
     else if (!priorCapture && prevSq != SQ_NONE)
@@ -1797,9 +1774,11 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
 }
 
 Depth Search::Worker::reduction(bool i, Depth d, int mn, int delta) const {
-    int reductionScale = reductions[d] * reductions[mn];
-    return ((reductionScale + 1304 - delta * 814 / rootDelta) >> 10) + !i * reductionScale / 3405;
+    int reductionScale = reductions[d] * reductions[std::min(mn, 24)];
+    return ((reductionScale + 1087 - delta * 764 / rootDelta) >> 10) + !i * reductionScale / 2745;
     // crystal9 return reductionScale - delta * 764 / rootDelta + !i * reductionScale * 191 / 512 + 1087;
+    // limit movecount reductions to 24 (18 is worse, 24 neutral to small gain) or possibly lower instead of reducing r later?
+    // try capping depth instead (16 to 24 range) no sigificant difference for 16 at 90 + 0.90
 }
 
 // elapsed() returns the time elapsed since the search started. If the
