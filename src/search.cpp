@@ -832,11 +832,12 @@ Value Search::Worker::search(
            && !gameCycle
            && !(thisThread->nmpGuard && nullParity)
            && eval - futility_margin(depth, cutNode && !ss->ttHit, improving, opponentWorsening)
-               - (ss - 1)->statScore / 301 + 37 - std::abs(correctionValue) / 139878 >= beta)
+               - (ss-1)->statScore / 301 >= beta)
            return beta + (eval - beta) / 3;
 
        // Step 9. Null move search with verification search (~35 Elo)
        if (   !thisThread->nmpGuard
+           &&  (ss-1)->statScore < 16878
            &&  cutNode
            && !gameCycle
            && !excludedMove
@@ -851,7 +852,7 @@ Value Search::Worker::search(
            thisThread->nmpSide = ourMove;
 
            // Null move dynamic reduction based on depth and eval
-           Depth R = std::min(int(eval - beta) / 232, 6) + depth / 3 + 5;
+           Depth R = std::min(int(eval - beta) / 144, 6) + depth / 3 + 4;
 
            if (!ourMove && (ss-1)->secondaryLine)
                R = std::min(R, 8);
@@ -899,8 +900,7 @@ Value Search::Worker::search(
        {
            assert(probCutBeta < VALUE_INFINITE);
            // crystal9
-           MovePicker mp(pos, ttData.move, PieceValue[type_of(pos.captured_piece())] - PawnValue,
-                         &thisThread->captureHistory);
+           MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &thisThread->captureHistory);
 
            while ((move = mp.next_move()) != Move::none())
                if (move != excludedMove)
