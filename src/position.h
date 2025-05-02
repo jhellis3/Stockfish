@@ -187,8 +187,6 @@ class Position {
                      Square&           rfrom,
                      Square&           rto,
                      DirtyPiece* const dp = nullptr);
-    template<bool AfterMove> // crystal9
-    Key adjust_key50(Key k) const; // crystal9
 
     // Data members
     Piece      board[SQUARE_NB];

@@ -778,8 +778,9 @@ Value Search::Worker::search(
 
         // ttValue can be used as a better position evaluation
         if (is_valid(ttData.value)
-            && (ttData.move != Move::none() || ttData.value <= eval)
-            && (ttData.bound & (ttData.value > eval ? BOUND_LOWER : BOUND_UPPER)))
+            && ttData.move != Move::none()
+            && ttData.value > eval
+            && ttData.bound & BOUND_LOWER)
             eval = ttData.value;
     }
     else
@@ -831,8 +832,7 @@ Value Search::Worker::search(
            && !excludedMove
            && !gameCycle
            && !(thisThread->nmpGuard && nullParity)
-           && eval - futility_margin(depth, cutNode && !ss->ttHit, improving, opponentWorsening)
-               - (ss-1)->statScore / 301 >= beta)
+           &&  eval - futility_margin(depth, cutNode && !ss->ttHit, improving, opponentWorsening) - (ss-1)->statScore / 301 >= beta)
            return beta + (eval - beta) / 3;
 
        // Step 9. Null move search with verification search (~35 Elo)
@@ -899,7 +899,6 @@ Value Search::Worker::search(
            && (!ss->ttHit || (ttData.depth < depth - 3 && ttData.value >= probCutBeta && ttData.value != VALUE_NONE)))
        {
            assert(probCutBeta < VALUE_INFINITE);
-           // crystal9
            MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &thisThread->captureHistory);
 
            while ((move = mp.next_move()) != Move::none())
@@ -1125,7 +1124,7 @@ Value Search::Worker::search(
                 }
 
                 // SEE based pruning for captures and checks (~11 Elo)
-                if (depth < 11 && !pos.see_ge(move, -182 * depth))
+                if (!pos.see_ge(move, -190 * depth))
                     continue;
             }
             else
@@ -1180,7 +1179,7 @@ Value Search::Worker::search(
         else if (    doSingular
                  &&  move == ttData.move)
         {
-            Value singularBeta = std::max(ttData.value - 24 - (56 + 79 * (ss->ttPv && !PvNode)) * depth / 64, -VALUE_MAX_EVAL);
+            Value singularBeta = std::max(ttData.value - 16 - (1 + (ss->ttPv && !PvNode)) * (depth - 1), -VALUE_MAX_EVAL);
             Depth singularDepth = newDepth / 2;
 
             ss->excludedMove = move;
@@ -1188,16 +1187,16 @@ Value Search::Worker::search(
             value = search<NonPV>(pos, ss, singularBeta - 1, singularBeta, singularDepth, cutNode);
             ss->excludedMove = Move::none();
 
-            if (allowExt && value < singularBeta && (ttData.value > beta - 128 || !ourMove))
-                extension = 1 + (!PvNode || !ttCapture) * (1 + (value < singularBeta - 224));
+            if (value < singularBeta)
+                extension = allowExt + allowExt * (!PvNode || !ttCapture) * (1 + (value < singularBeta - 224));
 
             // Multi-cut pruning
             // Our ttMove is assumed to fail high based on the bound of the TT entry,
             // and if after excluding the ttMove with a reduced search we fail high over the original beta,
             // we assume this expected cut-node is not singular (multiple moves fail high),
             // and we can prune the whole subtree by returning a softbound.
-            else if (!PvNode && value >= singularBeta && ttData.value >= beta && value >= beta)
-                return ttData.value;
+            else if (!PvNode && singularBeta >= beta)
+                return singularBeta;
         }
 
         // Step 16. Make the move
@@ -1260,7 +1259,6 @@ Value Search::Worker::search(
             // To prevent problems when the max value is less than the min value,
             // std::clamp has been replaced by a more robust implementation.
 
-            // crystal9
             Depth d = std::max(1, std::min(newDepth - r, newDepth + !allNode));
 
             ss->reduction = newDepth - d;
@@ -1612,10 +1610,10 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
               to_corrected_static_eval(unadjustedStaticEval, correctionValue);
 
             // ttValue can be used as a better position evaluation
-            if (    is_valid(ttData.value) // crystal9
-                && !is_decisive(ttData.value)
-                && (ttData.move != Move::none() || ttData.value <= bestValue)
-                && (ttData.bound & (ttData.value > bestValue ? BOUND_LOWER : BOUND_UPPER)))
+            if (  !is_decisive(ttData.value)
+                && ttData.move != Move::none()
+                && ttData.value > bestValue
+                && ttData.bound & BOUND_LOWER)
                 bestValue = ttData.value;
         }
         else
@@ -1776,9 +1774,6 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
 Depth Search::Worker::reduction(bool i, Depth d, int mn, int delta) const {
     int reductionScale = reductions[d] * reductions[std::min(mn, 24)];
     return ((reductionScale + 1087 - delta * 764 / rootDelta) >> 10) + !i * reductionScale / 2745;
-    // crystal9 return reductionScale - delta * 764 / rootDelta + !i * reductionScale * 191 / 512 + 1087;
-    // limit movecount reductions to 24 (18 is worse, 24 neutral to small gain) or possibly lower instead of reducing r later?
-    // try capping depth instead (16 to 24 range) no sigificant difference for 16 at 90 + 0.90
 }
 
 // elapsed() returns the time elapsed since the search started. If the
