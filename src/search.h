@@ -78,6 +78,7 @@ struct Stack {
     uint16_t        cutoffCnt;
     int             reduction;
     bool            isTTMove;
+    bool            isPvNode;
 };
 
 
@@ -265,6 +266,8 @@ class Worker {
     CorrectionHistory<Minor>        minorPieceCorrectionHistory;
     CorrectionHistory<NonPawn>      nonPawnCorrectionHistory;
     CorrectionHistory<Continuation> continuationCorrectionHistory;
+
+    TTMoveHistory ttMoveHistory;
 
    private:
     void iterative_deepening();

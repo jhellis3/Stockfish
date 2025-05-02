@@ -19,6 +19,7 @@
 #include "movepick.h"
 
 #include <cassert>
+#include <cstddef>
 #include <limits>
 
 #include "bitboard.h"
@@ -125,27 +126,30 @@ void MovePicker::score() {
 
     static_assert(Type == CAPTURES || Type == QUIETS || Type == EVASIONS, "Wrong type");
 
-    [[maybe_unused]] Bitboard threatenedByPawn, threatenedByMinor, threatenedByRook,
-      threatenedPieces;
+    [[maybe_unused]] Bitboard threatenedPieces, threatByLesser[4];
     if constexpr (Type == QUIETS)
     {
         Color us = pos.side_to_move();
 
-        threatenedByPawn = pos.attacks_by<PAWN>(~us);
-        threatenedByMinor =
-          pos.attacks_by<KNIGHT>(~us) | pos.attacks_by<BISHOP>(~us) | threatenedByPawn;
-        threatenedByRook = pos.attacks_by<ROOK>(~us) | threatenedByMinor;
+        threatByLesser[0] = threatByLesser[1] = pos.attacks_by<PAWN>(~us);
+        threatByLesser[2] =
+          pos.attacks_by<KNIGHT>(~us) | pos.attacks_by<BISHOP>(~us) | threatByLesser[0];
+        threatByLesser[3] = pos.attacks_by<ROOK>(~us) | threatByLesser[2];
 
         // Pieces threatened by pieces of lesser material value
-        threatenedPieces = (pos.pieces(us, QUEEN) & threatenedByRook)
-                         | (pos.pieces(us, ROOK) & threatenedByMinor)
-                         | (pos.pieces(us, KNIGHT, BISHOP) & threatenedByPawn);
+        threatenedPieces = (pos.pieces(us, QUEEN) & threatByLesser[3])
+                         | (pos.pieces(us, ROOK) & threatByLesser[2])
+                         | (pos.pieces(us, KNIGHT, BISHOP) & threatByLesser[0]);
     }
 
     for (auto& m : *this)
         if constexpr (Type == CAPTURES)
             m.value =
-              7 * int(PieceValue[pos.piece_on(m.to_sq())])
+              (2
+                 * (pos.blockers_for_king(~pos.side_to_move()) & m.from_sq()
+                    && !aligned(m.from_sq(), m.to_sq(), pos.square<KING>(~pos.side_to_move())))
+               + 7)
+                * int(PieceValue[pos.piece_on(m.to_sq())])
               + (*captureHistory)[pos.moved_piece(m)][m.to_sq()][type_of(pos.piece_on(m.to_sq()))];
 
         else if constexpr (Type == QUIETS)
@@ -162,23 +166,20 @@ void MovePicker::score() {
             m.value += (*continuationHistory[1])[pc][to];
             m.value += (*continuationHistory[2])[pc][to];
             m.value += (*continuationHistory[3])[pc][to];
-            m.value += (*continuationHistory[4])[pc][to] / 3;
             m.value += (*continuationHistory[5])[pc][to];
 
             // bonus for checks
-            m.value += bool(pos.check_squares(pt) & to) * 16384;
+            m.value += (bool(pos.check_squares(pt) & to) && pos.see_ge(m, -75)) * 16384;
 
-            // bonus for escaping from capture
-            m.value += threatenedPieces & from ? (pt == QUEEN && !(to & threatenedByRook)   ? 51700
-                                                  : pt == ROOK && !(to & threatenedByMinor) ? 25600
-                                                  : !(to & threatenedByPawn)                ? 14450
-                                                                                            : 0)
-                                               : 0;
-
-            // malus for putting piece en prise
-            m.value -= (pt == QUEEN && bool(to & threatenedByRook)   ? 49000
-                        : pt == ROOK && bool(to & threatenedByMinor) ? 24335
-                                                                     : 0);
+            // penalty for moving to a square threatened by a lesser piece
+            // or bonus for escaping an attack by a lesser piece.
+            constexpr int bonus[4] = {144, 144, 256, 517};
+            if (KNIGHT <= pt && pt <= QUEEN)
+            {
+                auto i = pt - 2;
+                int  v = (threatByLesser[i] & to ? -95 : 100 * bool(threatByLesser[i] & from));
+                m.value += bonus[i] * v;
+            }
 
             if (ply < LOW_PLY_HISTORY_SIZE)
                 m.value += 8 * (*lowPlyHistory)[ply][m.from_to()] / (1 + 2 * ply);
@@ -190,8 +191,7 @@ void MovePicker::score() {
                 m.value = PieceValue[pos.piece_on(m.to_sq())] + (1 << 28);
             else
                 m.value = (*mainHistory)[pos.side_to_move()][m.from_to()]
-                        + (*continuationHistory[0])[pos.moved_piece(m)][m.to_sq()]
-                        + (*pawnHistory)[pawn_structure_index(pos)][pos.moved_piece(m)][m.to_sq()];
+                        + (*continuationHistory[0])[pos.moved_piece(m)][m.to_sq()];
         }
 }
 
@@ -316,5 +316,31 @@ top:
 }
 
 void MovePicker::skip_quiet_moves() { skipQuiets = true; }
+
+bool MovePicker::otherPieceTypesMobile(PieceType pt, ValueList<Move, 32>& capturesSearched) {
+    if (stage != GOOD_QUIET && stage != BAD_QUIET)
+        return true;
+
+    // verify good captures
+    for (std::size_t i = 0; i < capturesSearched.size(); i++)
+        if (type_of(pos.moved_piece(capturesSearched[i])) != pt)
+        {
+            if (type_of(pos.moved_piece(capturesSearched[i])) != KING)
+                return true;
+            if (pos.legal(capturesSearched[i]))
+                return true;
+        }
+
+    // now verify bad captures and quiets
+    for (ExtMove* c = moves; c < endBadQuiets; ++c)
+        if (type_of(pos.moved_piece(*c)) != pt)
+        {
+            if (type_of(pos.moved_piece(*c)) != KING)
+                return true;
+            if (pos.legal(*c))
+                return true;
+        }
+    return false;
+}
 
 }  // namespace Stockfish

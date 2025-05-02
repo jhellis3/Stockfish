@@ -166,6 +166,8 @@ struct CorrHistTypedef<NonPawn> {
 template<CorrHistType T>
 using CorrectionHistory = typename Detail::CorrHistTypedef<T>::type;
 
+using TTMoveHistory = StatsEntry<std::int16_t, 8192>;
+
 }  // namespace Stockfish
 
 #endif  // #ifndef HISTORY_H_INCLUDED
