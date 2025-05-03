@@ -76,7 +76,6 @@ struct Stack {
     bool            secondaryLine;
     bool            mainLine;
     uint16_t        cutoffCnt;
-    int             reduction;
     bool            isTTMove;
     bool            isPvNode;
 };

@@ -348,7 +348,7 @@ void Search::Worker::iterative_deepening() {
 
             // Reset aspiration window starting size
             Value avg   = rootMoves[pvIdx].averageScore;
-            int momentum = (int(avg) * avg) >> 14; //crystal9 try 13
+            int momentum = (int(avg) * avg) >> 13;
             delta        = 9;
 
             // Dynamic symmetric contempt. If we at least have a draw, we have contempt; otherwise assume opponent has it.
@@ -503,8 +503,6 @@ void Search::Worker::iterative_deepening() {
                 else
                     threads.stop = true;
             }
-            else
-                threads.increaseDepth = mainThread->ponder || elapsedT <= optimumT * 0.5138;
         }
 
         mainThread->iterValue[iterIdx] = bestValue;
@@ -601,7 +599,6 @@ Value Search::Worker::search(
     bool    givesCheck, improving, priorCapture, isMate, gameCycle;
     bool    capture, opponentWorsening,
             ttCapture, kingDanger, ourMove, nullParity;
-    int     priorReduction;
     Piece   movedPiece;
 
     ValueList<Move, 32> capturesSearched;
@@ -669,8 +666,6 @@ Value Search::Worker::search(
 
     Square prevSq  = ((ss - 1)->currentMove).is_ok() ? ((ss - 1)->currentMove).to_sq() : SQ_NONE;
     bestMove       = Move::none();
-    priorReduction = (ss - 1)->reduction;
-    (ss - 1)->reduction = 0;
     ss->statScore       = 0;
     ss->isPvNode        = PvNode;
     (ss + 2)->cutoffCnt = 0;
@@ -787,7 +782,7 @@ Value Search::Worker::search(
         ss->staticEval = eval = to_corrected_static_eval(unadjustedStaticEval, correctionValue);
 
         // ttValue can be used as a better position evaluation
-        if (is_valid(ttData.value)
+        if (   is_valid(ttData.value)
             && ttData.move != Move::none()
             && ttData.value > eval
             && ttData.bound & BOUND_LOWER)
@@ -822,12 +817,6 @@ Value Search::Worker::search(
 
     opponentWorsening = ss->staticEval > -(ss - 1)->staticEval;
 
-    // crystal9
-    /*    if (priorReduction >= 3 && !opponentWorsening)
-        depth++;
-    if (priorReduction >= 1 && depth >= 2 && ss->staticEval + (ss - 1)->staticEval > 175
-        depth--;*/
-
     // Begin early pruning.
     if (   !PvNode
         && !thisThread->nmpGuardV
@@ -837,7 +826,7 @@ Value Search::Worker::search(
     {
        // Step 8. Futility pruning: child node (~40 Elo)
        // The depth condition is important for mate finding.
-       if (    depth < (9 - 2 * ((ss-1)->mainLine || (ss-1)->secondaryLine || (ttData.move && !ttCapture)))
+       if (    depth < (11 - 3 * ((ss-1)->mainLine || (ss-1)->secondaryLine || (ttData.move && !ttCapture)))
            && !ss->ttPv
            && !kingDanger
            && !excludedMove
@@ -848,7 +837,6 @@ Value Search::Worker::search(
 
        // Step 9. Null move search with verification search (~35 Elo)
        if (   !thisThread->nmpGuard
-           &&  (ss-1)->statScore < 16878
            &&  cutNode
            && !gameCycle
            && !excludedMove
@@ -863,7 +851,7 @@ Value Search::Worker::search(
            thisThread->nmpSide = ourMove;
 
            // Null move dynamic reduction based on depth and eval
-           Depth R = std::min(int(eval - beta) / 213, 6) + depth / 3 + 4; // tune for Crystal9
+           Depth R = std::min(int(eval - beta) / 213, 6) + depth / 3 + 4;
 
            if (!ourMove && (ss-1)->secondaryLine)
                R = std::min(R, 8);
@@ -893,7 +881,7 @@ Value Search::Worker::search(
                   // While it is unsafe to return mate scores from null search, mate scores
                   // from verification search are fine.
                   if (v >= beta)
-                      return is_win(v) ? v : std::min(nullValue, VALUE_MATE_IN_MAX_PLY);
+                      return is_win(v) ? v : std::min(nullValue, VALUE_MAX_EVAL);
               }
            }
        }
@@ -950,8 +938,13 @@ Value Search::Worker::search(
     // Step 11. Internal iterative reductions
     // For PV nodes without a ttMove as well as for deep enough cutNodes, we decrease depth.
     // (*Scaler) Especially if they make IIR less aggressive.
-    if ((!allNode && depth >= (PvNode ? 5 : 7)) && !ttData.move)
-        depth--;
+    if (   !allNode
+        &&  depth >= (PvNode ? 5 : 7)
+        && !ttData.move
+        && !gameCycle
+        &&  (!PvNode || !(ss-1)->mainLine || (ss-1)->moveCount > 1)
+        && !(ss-1)->secondaryLine)
+        depth -= 2;
 
     } // In check search starts here
 
@@ -1003,8 +996,7 @@ Value Search::Worker::search(
                       && !is_loss(alpha)
                       && !is_decisive(ttData.value)
                       &&  ttData.depth >= depth - 3
-                      &&  depth >= 4 - (thisThread->completedDepth > 32) + ss->ttPv
-                      && !(ttData.value >= VALUE_DRAW && MoveList<LEGAL>(pos).size() == 1);
+                      &&  depth >= 4 - (thisThread->completedDepth > 32) + ss->ttPv;
 
     int lmrAdjustment =   cutNode * 2
                         + ((ss+1)->cutoffCnt > 3)
@@ -1040,7 +1032,7 @@ Value Search::Worker::search(
 
         ss->moveCount = ++moveCount;
 
-        if (rootNode && is_mainthread() && nodes > 10000000) // crystal9
+        if (rootNode && is_mainthread() && nodes > 10000000)
         {
             main_manager()->updates.onIter(
               {depth, UCIEngine::move(move, pos.is_chess960()), moveCount + thisThread->pvIdx});
@@ -1077,6 +1069,7 @@ Value Search::Worker::search(
         if (isMate)
         {
             ss->currentMove = move;
+            ss->isTTMove    = (move == ttData.move);
             ss->continuationHistory =
               &thisThread->continuationHistory[ss->inCheck][capture][movedPiece][move.to_sq()];
             ss->continuationCorrectionHistory =
@@ -1101,8 +1094,8 @@ Value Search::Worker::search(
 
         // Step 14. Pruning at shallow depth.
         // Depth conditions are important for mate finding.
-        if (   doLMP
-            && !is_loss(bestValue))
+        if (    doLMP
+            &&  bestValue > VALUE_MATED_IN_MAX_PLY)
         {
             // Skip quiet moves if movecount exceeds our FutilityMoveCount threshold
             if (moveCount >= futility_move_count(improving, depth))
@@ -1166,7 +1159,7 @@ Value Search::Worker::search(
         }
 
         // Step 15. Extensions (~100 Elo)
-        if (gameCycleExtension && extension >= 0)
+        if (gameCycleExtension)
             extension = 2;
 
         // Singular extension search (~76 Elo, ~170 nElo). If all moves but one
@@ -1238,7 +1231,7 @@ Value Search::Worker::search(
         else
             r =     r
                   + ((ttCapture && !capture) * (1 + depth < 8))
-                  + lmrAdjustment // move cutoff count reduction here for crystal9?
+                  + lmrAdjustment
                   - ss->statScore / 10160;
 
         r -= std::min(std::abs(correctionValue) / 28720128, 2);
@@ -1266,9 +1259,7 @@ Value Search::Worker::search(
 
             Depth d = std::max(1, std::min(newDepth - r, newDepth + !allNode + previousPV));
 
-            ss->reduction = newDepth - d;
             value         = -search<NonPV>(pos, ss + 1, -(alpha + 1), -alpha, d, true);
-            ss->reduction = 0;
 
             // Do a full-depth search when reduced LMR search fails high
             if (value > alpha && d < newDepth)
@@ -1605,10 +1596,11 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     pvHit        = ttHit && ttData.is_pv;
 
     // At non-PV nodes we check for an early TT cutoff
-    if (!PvNode && ttData.depth >= DEPTH_QS
+    if (   !PvNode
+        &&  ttData.depth >= DEPTH_QS
         && !gameCycle
-        && is_valid(ttData.value)  // Can happen when !ttHit or when access race in probe()
-        && (ttData.bound & (ttData.value >= beta ? BOUND_LOWER : BOUND_UPPER)))
+        &&  is_valid(ttData.value)  // Can happen when !ttHit or when access race in probe()
+        &&  (ttData.bound & (ttData.value >= beta ? BOUND_LOWER : BOUND_UPPER)))
         return ttData.value;
 
     // Step 4. Static evaluation of the position
@@ -1686,12 +1678,12 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         moveCount++;
 
         // Step 6. Pruning
-        if (!is_loss(bestValue))
+        if (bestValue > VALUE_MATED_IN_MAX_PLY)
         {
             // Futility pruning and moveCount pruning
             if (   !givesCheck
                 &&  move.to_sq() != prevSq
-                && !is_loss(futilityBase)
+                &&  futilityBase > VALUE_MATED_IN_MAX_PLY
                 &&  move.type_of() != PROMOTION)
             {
                 if (moveCount > 2)

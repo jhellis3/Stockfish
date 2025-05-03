@@ -247,8 +247,6 @@ void ThreadPool::start_thinking(const OptionsMap&  options,
     main_manager()->stopOnPonderhit = stop = abortedSearch = false;
     main_manager()->ponder                                 = limits.ponderMode;
 
-    increaseDepth = true;
-
     Search::RootMoves rootMoves;
     const auto        legalmoves = MoveList<LEGAL>(pos);
 

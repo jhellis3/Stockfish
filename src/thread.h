@@ -150,7 +150,7 @@ class ThreadPool {
 
     void ensure_network_replicated();
 
-    std::atomic_bool stop, abortedSearch, increaseDepth;
+    std::atomic_bool stop, abortedSearch;
 
     auto cbegin() const noexcept { return threads.cbegin(); }
     auto begin() noexcept { return threads.begin(); }
