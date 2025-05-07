@@ -1606,6 +1606,21 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         && (ttData.bound & (ttData.value >= beta ? BOUND_LOWER : BOUND_UPPER)))
         return ttData.value;
 
+    // Accurately score terminal nodes
+    if (!MoveList<LEGAL>(pos).size())
+    {
+        if (ss->inCheck)
+            value = mated_in(ss->ply);
+        else
+            value = value_draw(this->nodes);
+
+        ttWriter.write(posKey, value_to_tt(value, ss->ply), pvHit,
+                       value >= beta ? BOUND_LOWER : BOUND_UPPER, 7, Move::none(),
+                       VALUE_NONE, tt.generation());
+
+        return value;
+    }
+
     // Step 4. Static evaluation of the position
     Value unadjustedStaticEval = VALUE_NONE;
     if (ss->inCheck)
@@ -1759,33 +1774,8 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         }
     }
 
-    // Step 9. Check for mate
-    // All legal moves have been searched. A special case: if we are
-    // in check and no legal moves were found, it is checkmate.
-    if (ss->inCheck && bestValue == -VALUE_INFINITE)
-    {
-        assert(!MoveList<LEGAL>(pos).size());
-        return mated_in(ss->ply);  // Plies to mate from the root
-    }
-
     if (!is_decisive(bestValue) && bestValue > beta)
         bestValue = (bestValue + beta) / 2;
-
-
-    Color us = pos.side_to_move();
-    if (!ss->inCheck && !moveCount && !pos.non_pawn_material(us)
-        && type_of(pos.captured_piece()) >= ROOK)
-    {
-        if (!((us == WHITE ? shift<NORTH>(pos.pieces(us, PAWN))
-                           : shift<SOUTH>(pos.pieces(us, PAWN)))
-              & ~pos.pieces()))  // no pawn pushes available
-        {
-            pos.state()->checkersBB = Rank1BB;  // search for legal king-moves only
-            if (!MoveList<LEGAL>(pos).size())   // stalemate
-                bestValue = VALUE_DRAW;
-            pos.state()->checkersBB = 0;
-        }
-    }
 
     // Save gathered info in transposition table. The static evaluation
     // is saved as it was before adjustment by correction history.
