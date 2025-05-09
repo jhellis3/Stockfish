@@ -671,7 +671,6 @@ Value Search::Worker::search(
     (ss + 2)->cutoffCnt = 0;
 
     // Step 4. Transposition table lookup
-    excludedMove                   = ss->excludedMove;
     posKey                         = pos.key();
     auto [ttHit, ttData, ttWriter] = tt.probe(posKey);
     // Need further processing of the saved data
@@ -746,7 +745,7 @@ Value Search::Worker::search(
                     || (v >  drawScore && alpha < tbValue - 9))
                 {
                     ttWriter.write(posKey, tbValue, ss->ttPv, v > drawScore ? BOUND_LOWER : v < -drawScore ? BOUND_UPPER : BOUND_EXACT,
-                              v == 0 ? MAX_PLY : depth, Move::none(), VALUE_NONE, tt.generation());
+                                   depth, Move::none(), VALUE_NONE, tt.generation());
 
                     return tbValue;
                 }
@@ -942,7 +941,7 @@ Value Search::Worker::search(
         &&  depth >= (PvNode ? 5 : 7)
         && !ttData.move
         && !gameCycle
-        &&  (!PvNode || !(ss-1)->mainLine || (ss-1)->moveCount > 1)
+        && (!PvNode || !(ss-1)->mainLine || (ss-1)->moveCount > 1)
         && !(ss-1)->secondaryLine)
         depth -= 2;
 
@@ -950,7 +949,7 @@ Value Search::Worker::search(
 
    // Step 12. A small Probcut idea
    probCutBeta = beta + 180 + depth * 20;
-   if (    ss->inCheck
+   if (     ss->inCheck
         && !PvNode
         &&  ttCapture
         &&  ourMove
@@ -984,8 +983,8 @@ Value Search::Worker::search(
     bool lmrCapture = cutNode && (ss-1)->moveCount > 1;
 
     bool gameCycleExtension =    gameCycle
-                              && (   ( ourMove && PvNode)
-                                  || (!ourMove && (ss-1)->secondaryLine && thisThread->pvValue < drawValue));
+                              && (   (ourMove && PvNode)
+                                  || ((ss-1)->secondaryLine && thisThread->pvValue < drawValue));
 
     bool kingDangerThem = ourMove && pos.king_danger(~us);
 
@@ -1052,8 +1051,8 @@ Value Search::Worker::search(
         // in a secondary root move in order to change the PV. Such an improvement must occur on the path of
         // our opponent's best moves or else it is meaningless.
         ss->secondaryLine = (   (rootNode && moveCount > 1)
-                            || (!ourMove && (ss-1)->secondaryLine && !excludedMove && moveCount == 1)
-                            || ( ourMove && (ss-1)->secondaryLine));
+                             || (!ourMove && (ss-1)->secondaryLine && !excludedMove && moveCount == 1)
+                             || ( ourMove && (ss-1)->secondaryLine));
 
         ss->mainLine = (   (rootNode && moveCount == 1)
                         || (!ourMove && (ss-1)->mainLine)
@@ -1278,11 +1277,7 @@ Value Search::Worker::search(
                 update_continuation_histories(ss, movedPiece, move.to_sq(), 1508);
             }
             else if (value > alpha && value < bestValue + 9)
-            {
-                newDepth--;
-                if (value < bestValue + 4)
-                    newDepth--;
-            }
+                newDepth -= (1 + (value < bestValue + 4));
         }
 
         // Step 18. Full-depth search when LMR is skipped
@@ -1403,12 +1398,12 @@ Value Search::Worker::search(
                 else
                 {
                     // Reduce other moves if we have found at least one score improvement (~2 Elo)
-                    if (   depth > 2
-                        && depth < 16
+                    if (    depth > 2
+                        &&  depth < 16
                         && !gameCycle
                         && !is_decisive(value)
-                        && beta  <  VALUE_MAX_EVAL / 16
-                        && alpha > -VALUE_MAX_EVAL / 16)
+                        &&  beta  <  VALUE_MAX_EVAL / 16
+                        &&  alpha > -VALUE_MAX_EVAL / 16)
                         depth -= 1; // try 2
 
                     assert(depth > 0);
@@ -1621,10 +1616,10 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
               to_corrected_static_eval(unadjustedStaticEval, correctionValue);
 
             // ttValue can be used as a better position evaluation
-            if (  !is_decisive(ttData.value)
-                && ttData.move != Move::none()
-                && ttData.value > bestValue
-                && ttData.bound & BOUND_LOWER)
+            if (   !is_decisive(ttData.value)
+                &&  ttData.move != Move::none()
+                &&  ttData.value > bestValue
+                &&  ttData.bound & BOUND_LOWER)
                 bestValue = ttData.value;
         }
         else
@@ -1778,7 +1773,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         {
             pos.state()->checkersBB = Rank1BB;  // search for legal king-moves only
             if (!MoveList<LEGAL>(pos).size())   // stalemate
-                bestValue = VALUE_DRAW;
+                bestValue = contempt[~us];
             pos.state()->checkersBB = 0;
         }
     }
