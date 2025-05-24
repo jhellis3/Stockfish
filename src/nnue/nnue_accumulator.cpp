@@ -33,12 +33,16 @@
 namespace Stockfish::Eval::NNUE {
 
 #if defined(__GNUC__) && !defined(__clang__)
-    #define sf_assume(cond) \
-        do \
-        { \
-            if (!(cond)) \
-                __builtin_unreachable(); \
-        } while (0)
+    #if __GNUC__ >= 13
+        #define sf_assume(cond) __attribute__((assume(cond)))
+    #else
+        #define sf_assume(cond) \
+            do \
+            { \
+                if (!(cond)) \
+                    __builtin_unreachable(); \
+            } while (0)
+    #endif
 #else
     // do nothing for other compilers
     #define sf_assume(cond)
@@ -152,16 +156,16 @@ void AccumulatorStack::forward_update_incremental(
     {
         if (next + 1 < size)
         {
-            auto& dp1 = accumulators[next].dirtyPiece;
-            auto& dp2 = accumulators[next + 1].dirtyPiece;
+            DirtyPiece& dp1 = accumulators[next].dirtyPiece;
+            DirtyPiece& dp2 = accumulators[next + 1].dirtyPiece;
 
-            if (dp2.dirty_num >= 2 && dp1.piece[0] == dp2.piece[1] && dp1.to[0] == dp2.from[1])
+            if (dp1.to != SQ_NONE && dp1.to == dp2.remove_sq)
             {
-                const Square captureSq = dp1.to[0];
-                dp1.to[0] = dp2.from[1] = SQ_NONE;
+                const Square captureSq = dp1.to;
+                dp1.to = dp2.remove_sq = SQ_NONE;
                 double_inc_update<Perspective>(featureTransformer, ksq, accumulators[next],
                                                accumulators[next + 1], accumulators[next - 1]);
-                dp1.to[0] = dp2.from[1] = captureSq;
+                dp1.to = dp2.remove_sq = captureSq;
 
                 next++;
                 continue;
