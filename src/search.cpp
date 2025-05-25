@@ -694,30 +694,27 @@ Value Search::Worker::search(
 
         // Partial workaround for the graph history interaction problem
         // For high rule50 counts don't produce transposition table cutoffs.
-        if (pos.rule50_count() < 90)
+        if (depth >= 8 && ttData.move && pos.pseudo_legal(ttData.move) && pos.legal(ttData.move)
+            && !is_decisive(ttData.value))
         {
-            if (depth >= 8 && ttData.move && pos.pseudo_legal(ttData.move) && pos.legal(ttData.move)
-                && !is_decisive(ttData.value))
-            {
-                do_move(pos, ttData.move, st);
-                Key nextPosKey                             = pos.key();
-                auto [ttHitNext, ttDataNext, ttWriterNext] = tt.probe(nextPosKey);
-                ttDataNext.value =
-                  ttHitNext ? value_from_tt(ttDataNext.value, ss->ply + 1)
-                            : VALUE_NONE;
-                undo_move(pos, ttData.move);
+            do_move(pos, ttData.move, st);
+            Key nextPosKey                             = pos.key();
+            auto [ttHitNext, ttDataNext, ttWriterNext] = tt.probe(nextPosKey);
+            ttDataNext.value =
+              ttHitNext ? value_from_tt(ttDataNext.value, ss->ply + 1)
+                        : VALUE_NONE;
+            undo_move(pos, ttData.move);
 
-                if (!is_valid(ttDataNext.value))
-                    return ttData.value;
-                if (ttData.value >= beta && -ttDataNext.value >= beta)
-                    return ttData.value;
-                if (ttData.value <= alpha && -ttDataNext.value <= alpha)
-                    return ttData.value;
-            }
-            else
-            {
+            if (!is_valid(ttDataNext.value))
                 return ttData.value;
-            }
+            if (ttData.value >= beta && -ttDataNext.value >= beta)
+                return ttData.value;
+            if (ttData.value <= alpha && -ttDataNext.value <= alpha)
+                return ttData.value;
+        }
+        else
+        {
+            return ttData.value;
         }
     }
 
@@ -796,6 +793,11 @@ Value Search::Worker::search(
             && ttData.value > eval
             && ttData.bound & BOUND_LOWER)
             eval = ttData.value;
+
+        else if (   !ourMove
+                 && ttData.value < eval
+                 && ttData.bound & BOUND_UPPER)
+            eval = ttData.value;
     }
     else
     {
@@ -846,7 +848,7 @@ Value Search::Worker::search(
 
        // Step 8. Futility pruning: child node (~40 Elo)
        // The depth condition is important for mate finding.
-       if (    depth < (11 - 3 * ((ss-1)->mainLine || (ss-1)->secondaryLine || (ttData.move && !ttCapture)))
+       if (    depth < (9 - 2 * ((ss-1)->mainLine || (ss-1)->secondaryLine || (ttData.move && !ttCapture)))
            && !ss->ttPv
            && !kingDanger
            && !excludedMove
@@ -1003,7 +1005,7 @@ Value Search::Worker::search(
     bool lmrCapture = cutNode && (ss-1)->moveCount > 1;
 
     bool gameCycleExtension =    gameCycle
-                              && (   (ourMove && PvNode)
+                              && (   PvNode
                                   || ((ss-1)->secondaryLine && thisThread->pvValue < drawValue));
 
     bool kingDangerThem = ourMove && pos.king_danger(~us);
@@ -1636,6 +1638,11 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
                 &&  ttData.move != Move::none()
                 &&  ttData.value > bestValue
                 &&  ttData.bound & BOUND_LOWER)
+                bestValue = ttData.value;
+
+            else if (   (ss->ply & 1)
+                     && ttData.value < bestValue
+                     && ttData.bound & BOUND_UPPER)
                 bestValue = ttData.value;
         }
         else
