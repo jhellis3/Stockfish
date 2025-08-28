@@ -590,6 +590,10 @@ endif
 # Locate the version in the same directory as the compiler used,
 # with fallback to a generic one if it can't be located
 	LLVM_PROFDATA := $(dir $(realpath $(shell which $(CXX) 2> /dev/null)))llvm-profdata
+# for icx
+ifeq ($(wildcard $(LLVM_PROFDATA)),)
+	LLVM_PROFDATA := $(dir $(realpath $(shell which $(CXX) 2> /dev/null)))/compiler/llvm-profdata
+endif
 ifeq ($(wildcard $(LLVM_PROFDATA)),)
 	LLVM_PROFDATA := llvm-profdata
 endif
@@ -899,7 +903,7 @@ help:
 	echo "Supported archs:" && \
 	echo "" && \
 	echo "native                  > select the best architecture for the host processor (default)" && \
-	echo "x86-64-avx512icl        > x86 64-bit with minimum avx512 support of Intel Ice Lane or AMD Zen 4" && \
+	echo "x86-64-avx512icl        > x86 64-bit with minimum avx512 support of Intel Ice Lake or AMD Zen 4" && \
 	echo "x86-64-vnni512          > x86 64-bit with vnni 512bit support" && \
 	echo "x86-64-vnni256          > x86 64-bit with vnni 512bit support, limit operands to 256bit wide" && \
 	echo "x86-64-avx512           > x86 64-bit with avx512 support" && \
@@ -1137,7 +1141,7 @@ icx-profile-make:
 	all
 
 icx-profile-use:
-	$(XCRUN) llvm-profdata merge -output=$(EXE).profdata *.profraw
+	$(XCRUN) $(LLVM_PROFDATA) merge -output=$(EXE).profdata *.profraw
 	$(MAKE) ARCH=$(ARCH) COMP=$(COMP) \
 	EXTRACXXFLAGS='-fprofile-instr-use=$(EXE).profdata' \
 	EXTRALDFLAGS='-fprofile-use ' \
