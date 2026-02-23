@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -43,7 +43,7 @@ class Option {
     Option(OnChange = nullptr);
     Option(bool v, OnChange = nullptr);
     Option(const char* v, OnChange = nullptr);
-    Option(double v, int minv, int maxv, OnChange = nullptr);
+    Option(int v, int minv, int maxv, OnChange = nullptr);
     Option(const char* v, const char* cur, OnChange = nullptr);
 
     Option& operator=(const std::string&);

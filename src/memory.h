@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,14 +20,44 @@
 #define MEMORY_H_INCLUDED
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <new>
 #include <type_traits>
 #include <utility>
+#include <cstring>
 
 #include "types.h"
+
+#if defined(_WIN64)
+
+    #if _WIN32_WINNT < 0x0601
+        #undef _WIN32_WINNT
+        #define _WIN32_WINNT 0x0601  // Force to include needed API prototypes
+    #endif
+
+    #if !defined(NOMINMAX)
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+
+    // Some Windows headers (RPC/old headers) define short macros such
+    // as 'small' expanding to 'char', which breaks identifiers in the code.
+    // Undefine those macros immediately after including <windows.h>.
+    #ifdef small
+        #undef small
+    #endif
+
+    #include <psapi.h>
+
+extern "C" {
+using OpenProcessToken_t      = bool (*)(HANDLE, DWORD, PHANDLE);
+using LookupPrivilegeValueA_t = bool (*)(LPCSTR, LPCSTR, PLUID);
+using AdjustTokenPrivileges_t =
+  bool (*)(HANDLE, BOOL, PTOKEN_PRIVILEGES, DWORD, PTOKEN_PRIVILEGES, PDWORD);
+}
+#endif
+
 
 namespace Stockfish {
 
@@ -211,6 +241,92 @@ T* align_ptr_up(T* ptr) {
       reinterpret_cast<char*>((ptrint + (Alignment - 1)) / Alignment * Alignment));
 }
 
+#if defined(_WIN32)
+
+template<typename FuncYesT, typename FuncNoT>
+auto windows_try_with_large_page_priviliges([[maybe_unused]] FuncYesT&& fyes, FuncNoT&& fno) {
+
+    #if !defined(_WIN64)
+    return fno();
+    #else
+
+    HANDLE hProcessToken{};
+    LUID   luid{};
+
+    const size_t largePageSize = GetLargePageMinimum();
+    if (!largePageSize)
+        return fno();
+
+    // Dynamically link OpenProcessToken, LookupPrivilegeValue and AdjustTokenPrivileges
+
+    HMODULE hAdvapi32 = GetModuleHandle(TEXT("advapi32.dll"));
+
+    if (!hAdvapi32)
+        hAdvapi32 = LoadLibrary(TEXT("advapi32.dll"));
+
+    auto OpenProcessToken_f =
+      OpenProcessToken_t((void (*)()) GetProcAddress(hAdvapi32, "OpenProcessToken"));
+    if (!OpenProcessToken_f)
+        return fno();
+    auto LookupPrivilegeValueA_f =
+      LookupPrivilegeValueA_t((void (*)()) GetProcAddress(hAdvapi32, "LookupPrivilegeValueA"));
+    if (!LookupPrivilegeValueA_f)
+        return fno();
+    auto AdjustTokenPrivileges_f =
+      AdjustTokenPrivileges_t((void (*)()) GetProcAddress(hAdvapi32, "AdjustTokenPrivileges"));
+    if (!AdjustTokenPrivileges_f)
+        return fno();
+
+    // We need SeLockMemoryPrivilege, so try to enable it for the process
+
+    if (!OpenProcessToken_f(  // OpenProcessToken()
+          GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hProcessToken))
+        return fno();
+
+    if (!LookupPrivilegeValueA_f(nullptr, "SeLockMemoryPrivilege", &luid))
+        return fno();
+
+    TOKEN_PRIVILEGES tp{};
+    TOKEN_PRIVILEGES prevTp{};
+    DWORD            prevTpLen = 0;
+
+    tp.PrivilegeCount           = 1;
+    tp.Privileges[0].Luid       = luid;
+    tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+
+    // Try to enable SeLockMemoryPrivilege. Note that even if AdjustTokenPrivileges()
+    // succeeds, we still need to query GetLastError() to ensure that the privileges
+    // were actually obtained.
+
+    if (!AdjustTokenPrivileges_f(hProcessToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), &prevTp,
+                                 &prevTpLen)
+        || GetLastError() != ERROR_SUCCESS)
+        return fno();
+
+    auto&& ret = fyes(largePageSize);
+
+    // Privilege no longer needed, restore previous state
+    AdjustTokenPrivileges_f(hProcessToken, FALSE, &prevTp, 0, nullptr, nullptr);
+
+    CloseHandle(hProcessToken);
+
+    return std::forward<decltype(ret)>(ret);
+
+    #endif
+}
+
+#endif
+
+template<typename T, typename ByteT>
+T load_as(const ByteT* buffer) {
+    static_assert(std::is_trivially_copyable<T>::value, "Type must be trivially copyable");
+    static_assert(sizeof(ByteT) == 1);
+
+    T value;
+    std::memcpy(&value, buffer, sizeof(T));
+
+    return value;
+}
 
 }  // namespace Stockfish
 

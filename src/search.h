@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -26,6 +26,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -75,7 +76,6 @@ struct Stack {
     bool                        ttHit;
     int                         cutoffCnt;
     int                         reduction;
-    int                         quietMoveStreak;
 };
 
 
@@ -134,19 +134,22 @@ struct LimitsType {
 // The UCI stores the uci options, thread pool, and transposition table.
 // This struct is used to easily forward data to the Search::Worker class.
 struct SharedState {
-    SharedState(const OptionsMap&                               optionsMap,
-                ThreadPool&                                     threadPool,
-                TranspositionTable&                             transpositionTable,
-                const LazyNumaReplicated<Eval::NNUE::Networks>& nets) :
+    SharedState(const OptionsMap&                                         optionsMap,
+                ThreadPool&                                               threadPool,
+                TranspositionTable&                                       transpositionTable,
+                std::map<NumaIndex, SharedHistories>&                     sharedHists,
+                const LazyNumaReplicatedSystemWide<Eval::NNUE::Networks>& nets) :
         options(optionsMap),
         threads(threadPool),
         tt(transpositionTable),
+        sharedHistories(sharedHists),
         networks(nets) {}
 
-    const OptionsMap&                               options;
-    ThreadPool&                                     threads;
-    TranspositionTable&                             tt;
-    const LazyNumaReplicated<Eval::NNUE::Networks>& networks;
+    const OptionsMap&                                         options;
+    ThreadPool&                                               threads;
+    TranspositionTable&                                       tt;
+    std::map<NumaIndex, SharedHistories>&                     sharedHistories;
+    const LazyNumaReplicatedSystemWide<Eval::NNUE::Networks>& networks;
 };
 
 class Worker;
@@ -259,13 +262,17 @@ class NullSearchManager: public ISearchManager {
     void check_time(Search::Worker&) override {}
 };
 
-
 // Search::Worker is the class that does the actual search.
 // It is instantiated once per thread, and it is responsible for keeping track
 // of the search history, and storing data required for the search.
 class Worker {
    public:
-    Worker(SharedState&, std::unique_ptr<ISearchManager>, size_t, NumaReplicatedAccessToken);
+    Worker(SharedState&,
+           std::unique_ptr<ISearchManager>,
+           size_t,
+           size_t,
+           size_t,
+           NumaReplicatedAccessToken);
 
     // Called at instantiation to initialize reductions tables.
     // Reset histories, usually before a new game.
@@ -283,16 +290,12 @@ class Worker {
     ButterflyHistory mainHistory;
     LowPlyHistory    lowPlyHistory;
 
-    CapturePieceToHistory captureHistory;
-    ContinuationHistory   continuationHistory[2][2];
-    PawnHistory           pawnHistory;
-
-    CorrectionHistory<Pawn>         pawnCorrectionHistory;
-    CorrectionHistory<Minor>        minorPieceCorrectionHistory;
-    CorrectionHistory<NonPawn>      nonPawnCorrectionHistory;
+    CapturePieceToHistory           captureHistory;
+    ContinuationHistory             continuationHistory[2][2];
     CorrectionHistory<Continuation> continuationCorrectionHistory;
 
-    TTMoveHistory ttMoveHistory;
+    TTMoveHistory    ttMoveHistory;
+    SharedHistories& sharedHistory;
 
    private:
     void iterative_deepening();
@@ -300,7 +303,7 @@ class Worker {
     void do_move(Position& pos, const Move move, StateInfo& st, Stack* const ss);
     void
     do_move(Position& pos, const Move move, StateInfo& st, const bool givesCheck, Stack* const ss);
-    void do_null_move(Position& pos, StateInfo& st);
+    void do_null_move(Position& pos, StateInfo& st, Stack* const ss);
     void undo_move(Position& pos, const Move move);
     void undo_null_move(Position& pos);
 
@@ -339,7 +342,7 @@ class Worker {
     Depth     rootDepth, completedDepth;
     Value     rootDelta;
 
-    size_t                    threadIdx;
+    size_t                    threadIdx, numaThreadIdx, numaTotal;
     NumaReplicatedAccessToken numaAccessToken;
 
     // Reductions lookup table initialized at startup
@@ -350,10 +353,10 @@ class Worker {
 
     Tablebases::Config tbConfig;
 
-    const OptionsMap&                               options;
-    ThreadPool&                                     threads;
-    TranspositionTable&                             tt;
-    const LazyNumaReplicated<Eval::NNUE::Networks>& networks;
+    const OptionsMap&                                         options;
+    ThreadPool&                                               threads;
+    TranspositionTable&                                       tt;
+    const LazyNumaReplicatedSystemWide<Eval::NNUE::Networks>& networks;
 
     // Used by NNUE
     Eval::NNUE::AccumulatorStack  accumulatorStack;

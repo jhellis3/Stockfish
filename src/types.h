@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -40,6 +40,7 @@
     #include <cstddef>
     #include <cstdint>
     #include <type_traits>
+    #include "misc.h"
 
     #if defined(_MSC_VER)
         // Disable some silly and noisy warnings from MSVC compiler
@@ -116,13 +117,13 @@ using Bitboard = uint64_t;
 constexpr int MAX_MOVES = 256;
 constexpr int MAX_PLY   = 246;
 
-enum Color : int8_t {
+enum Color : uint8_t {
     WHITE,
     BLACK,
     COLOR_NB = 2
 };
 
-enum CastlingRights : int8_t {
+enum CastlingRights : uint8_t {
     NO_CASTLING,
     WHITE_OO,
     WHITE_OOO = WHITE_OO << 1,
@@ -138,7 +139,7 @@ enum CastlingRights : int8_t {
     CASTLING_RIGHT_NB = 16
 };
 
-enum Bound : int8_t {
+enum Bound : uint8_t {
     BOUND_NONE,
     BOUND_UPPER,
     BOUND_LOWER,
@@ -189,13 +190,13 @@ constexpr Value QueenValue  = 2538;
 
 
 // clang-format off
-enum PieceType : std::int8_t {
+enum PieceType : std::uint8_t {
     NO_PIECE_TYPE, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
     ALL_PIECES = 0,
     PIECE_TYPE_NB = 8
 };
 
-enum Piece : std::int8_t {
+enum Piece : std::uint8_t {
     NO_PIECE,
     W_PAWN = PAWN,     W_KNIGHT, W_BISHOP, W_ROOK, W_QUEEN, W_KING,
     B_PAWN = PAWN + 8, B_KNIGHT, B_BISHOP, B_ROOK, B_QUEEN, B_KING,
@@ -226,7 +227,7 @@ constexpr Depth DEPTH_UNSEARCHED   = -2;
 constexpr Depth DEPTH_ENTRY_OFFSET = -3;
 
 // clang-format off
-enum Square : int8_t {
+enum Square : uint8_t {
     SQ_A1, SQ_B1, SQ_C1, SQ_D1, SQ_E1, SQ_F1, SQ_G1, SQ_H1,
     SQ_A2, SQ_B2, SQ_C2, SQ_D2, SQ_E2, SQ_F2, SQ_G2, SQ_H2,
     SQ_A3, SQ_B3, SQ_C3, SQ_D3, SQ_E3, SQ_F3, SQ_G3, SQ_H3,
@@ -254,7 +255,7 @@ enum Direction : int8_t {
     NORTH_WEST = NORTH + WEST
 };
 
-enum File : int8_t {
+enum File : uint8_t {
     FILE_A,
     FILE_B,
     FILE_C,
@@ -266,7 +267,7 @@ enum File : int8_t {
     FILE_NB
 };
 
-enum Rank : int8_t {
+enum Rank : uint8_t {
     RANK_1,
     RANK_2,
     RANK_3,
@@ -288,6 +289,49 @@ struct DirtyPiece {
     // castling uses add_sq and remove_sq to remove and add the rook
     Square remove_sq, add_sq;
     Piece  remove_pc, add_pc;
+};
+
+// Keep track of what threats change on the board (used by NNUE)
+struct DirtyThreat {
+    static constexpr int PcSqOffset         = 0;
+    static constexpr int ThreatenedSqOffset = 8;
+    static constexpr int ThreatenedPcOffset = 16;
+    static constexpr int PcOffset           = 20;
+
+    DirtyThreat() { /* don't initialize data */ }
+    DirtyThreat(uint32_t raw) :
+        data(raw) {}
+    DirtyThreat(Piece pc, Piece threatened_pc, Square pc_sq, Square threatened_sq, bool add) {
+        data = (uint32_t(add) << 31) | (pc << PcOffset) | (threatened_pc << ThreatenedPcOffset)
+             | (threatened_sq << ThreatenedSqOffset) | (pc_sq << PcSqOffset);
+    }
+
+    Piece  pc() const { return static_cast<Piece>(data >> PcOffset & 0xf); }
+    Piece  threatened_pc() const { return static_cast<Piece>(data >> ThreatenedPcOffset & 0xf); }
+    Square threatened_sq() const { return static_cast<Square>(data >> ThreatenedSqOffset & 0xff); }
+    Square pc_sq() const { return static_cast<Square>(data >> PcSqOffset & 0xff); }
+    bool   add() const { return data >> 31; }
+    uint32_t raw() const { return data; }
+
+   private:
+    uint32_t data;
+};
+
+// A piece can be involved in at most 8 outgoing attacks and 16 incoming attacks.
+// Moving a piece also can reveal at most 8 discovered attacks.
+// This implies that a non-castling move can change at most (8 + 16) * 3 + 8 = 80 features.
+// By similar logic, a castling move can change at most (5 + 1 + 3 + 9) * 2 = 36 features.
+// Thus, 80 should work as an upper bound. Finally, 16 entries are added to accommodate
+// unmasked vector stores near the end of the list.
+
+using DirtyThreatList = ValueList<DirtyThreat, 96>;
+
+struct DirtyThreats {
+    DirtyThreatList list;
+    Color           us;
+    Square          prevKsq, ksq;
+
+    Bitboard threatenedSqs, threateningSqs;
 };
 
     #define ENABLE_INCR_OPERATORS_ON(T) \
@@ -362,7 +406,7 @@ constexpr Key make_key(uint64_t seed) {
 }
 
 
-enum MoveType {
+enum MoveType : uint16_t {
     NORMAL,
     PROMOTION  = 1 << 14,
     EN_PASSANT = 2 << 14,
@@ -405,7 +449,9 @@ class Move {
         return Square(data & 0x3F);
     }
 
-    constexpr int from_to() const { return data & 0xFFF; }
+    // Same as to_sq() but without assertion, for branchless code paths
+    // where the result is masked/ignored when move is not ok
+    constexpr Square to_sq_unchecked() const { return Square(data & 0x3F); }
 
     constexpr MoveType type_of() const { return MoveType(data & (3 << 14)); }
 

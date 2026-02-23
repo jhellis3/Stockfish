@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -33,10 +33,12 @@
 #include "misc.h"
 #include "nnue/network.h"
 #include "nnue/nnue_common.h"
+#include "nnue/nnue_misc.h"
 #include "numa.h"
 #include "perft.h"
 #include "position.h"
 #include "search.h"
+#include "shm.h"
 #include "syzygy/tbprobe.h"
 #include "types.h"
 #include "uci.h"
@@ -50,18 +52,20 @@ constexpr auto StartFEN   = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq 
 constexpr int  MaxHashMB  = Is64Bit ? 33554432 : 2048;
 int            MaxThreads = std::max(1024, 4 * int(get_hardware_concurrency()));
 
+// The default configuration will attempt to group L3 domains up to 32 threads.
+// This size was found to be a good balance between the Elo gain of increased
+// history sharing and the speed loss from more cross-cache accesses (see
+// PR#6526). The user can always explicitly override this behavior.
+constexpr NumaAutoPolicy DefaultNumaPolicy = BundledL3Policy{32};
+
 Engine::Engine(std::optional<std::string> path) :
     binaryDirectory(path ? CommandLine::get_binary_directory(*path) : ""),
-    numaContext(NumaConfig::from_system()),
+    numaContext(NumaConfig::from_system(DefaultNumaPolicy)),
     states(new std::deque<StateInfo>(1)),
     threads(),
-    networks(
-      numaContext,
-      NN::Networks(
-        NN::NetworkBig({EvalFileDefaultNameBig, "None", ""}, NN::EmbeddedNNUEType::BIG),
-        NN::NetworkSmall({EvalFileDefaultNameSmall, "None", ""}, NN::EmbeddedNNUEType::SMALL))) {
-    pos.set(StartFEN, false, &states->back());
+    networks(numaContext, get_default_networks()) {
 
+    pos.set(StartFEN, false, &states->back());
 
     options.add(  //
       "Debug Log File", Option("", [](const Option& o) {
@@ -140,7 +144,8 @@ Engine::Engine(std::optional<std::string> path) :
           return std::nullopt;
       }));
 
-    load_networks();
+    threads.clear();
+    threads.ensure_network_replicated();
     resize_threads();
 }
 
@@ -212,12 +217,12 @@ void Engine::set_position(const std::string& fen, const std::vector<std::string>
 void Engine::set_numa_config_from_option(const std::string& o) {
     if (o == "auto" || o == "system")
     {
-        numaContext.set_numa_config(NumaConfig::from_system());
+        numaContext.set_numa_config(NumaConfig::from_system(DefaultNumaPolicy));
     }
     else if (o == "hardware")
     {
         // Don't respect affinity set in the system.
-        numaContext.set_numa_config(NumaConfig::from_system(false));
+        numaContext.set_numa_config(NumaConfig::from_system(DefaultNumaPolicy, false));
     }
     else if (o == "none")
     {
@@ -235,7 +240,8 @@ void Engine::set_numa_config_from_option(const std::string& o) {
 
 void Engine::resize_threads() {
     threads.wait_for_search_finished();
-    threads.set(numaContext.get_numa_config(), {options, threads, tt, networks}, updateContext);
+    threads.set(numaContext.get_numa_config(), {options, threads, tt, sharedHists, networks},
+                updateContext);
 
     // Reallocate the hash with the new threadpool size
     set_tt_size(options["Hash"]);
@@ -254,15 +260,48 @@ void Engine::set_ponderhit(bool b) { threads.main_manager()->ponder = b; }
 void Engine::verify_networks() const {
     networks->big.verify(options["EvalFile"], onVerifyNetworks);
     networks->small.verify(options["EvalFileSmall"], onVerifyNetworks);
+
+    auto statuses = networks.get_status_and_errors();
+    for (size_t i = 0; i < statuses.size(); ++i)
+    {
+        const auto [status, error] = statuses[i];
+        std::string message        = "Network replica " + std::to_string(i + 1) + ": ";
+        if (status == SystemWideSharedConstantAllocationStatus::NoAllocation)
+        {
+            message += "No allocation.";
+        }
+        else if (status == SystemWideSharedConstantAllocationStatus::LocalMemory)
+        {
+            message += "Local memory.";
+        }
+        else if (status == SystemWideSharedConstantAllocationStatus::SharedMemory)
+        {
+            message += "Shared memory.";
+        }
+        else
+        {
+            message += "Unknown status.";
+        }
+
+        if (error.has_value())
+        {
+            message += " " + *error;
+        }
+
+        onVerifyNetworks(message);
+    }
 }
 
-void Engine::load_networks() {
-    networks.modify_and_replicate([this](NN::Networks& networks_) {
-        networks_.big.load(binaryDirectory, options["EvalFile"]);
-        networks_.small.load(binaryDirectory, options["EvalFileSmall"]);
-    });
-    threads.clear();
-    threads.ensure_network_replicated();
+std::unique_ptr<Eval::NNUE::Networks> Engine::get_default_networks() const {
+
+    auto networks_ =
+      std::make_unique<NN::Networks>(NN::EvalFile{EvalFileDefaultNameBig, "None", ""},
+                                     NN::EvalFile{EvalFileDefaultNameSmall, "None", ""});
+
+    networks_->big.load(binaryDirectory, "");
+    networks_->small.load(binaryDirectory, "");
+
+    return networks_;
 }
 
 void Engine::load_big_network(const std::string& file) {
