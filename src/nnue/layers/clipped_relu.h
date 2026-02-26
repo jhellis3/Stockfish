@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -57,6 +57,12 @@ class ClippedReLU {
 
     // Write network parameters
     bool write_parameters(std::ostream&) const { return true; }
+
+    std::size_t get_content_hash() const {
+        std::size_t h = 0;
+        hash_combine(h, get_hash_value(0));
+        return h;
+    }
 
     // Forward propagation
     void propagate(const InputType* input, OutputType* output) const {
@@ -135,10 +141,10 @@ class ClippedReLU {
         constexpr IndexType Start = NumChunks * SimdWidth;
 
 #elif defined(USE_NEON)
-        constexpr IndexType NumChunks = InputDimensions / (SimdWidth / 2);
-        const int8x8_t      Zero      = {0};
-        const auto          in        = reinterpret_cast<const int32x4_t*>(input);
-        const auto          out       = reinterpret_cast<int8x8_t*>(output);
+        constexpr IndexType    NumChunks = InputDimensions / (SimdWidth / 2);
+        const SIMD::vec_i8x8_t Zero      = {0};
+        const auto             in        = reinterpret_cast<const SIMD::vec_i32x4_t*>(input);
+        const auto             out       = reinterpret_cast<SIMD::vec_i8x8_t*>(output);
         for (IndexType i = 0; i < NumChunks; ++i)
         {
             int16x8_t  shifted;

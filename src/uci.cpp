@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -318,8 +318,8 @@ void UCIEngine::benchmark(std::istream& args) {
 
     Benchmark::BenchmarkSetup setup = Benchmark::setup_benchmark(args);
 
-    const int numGoCommands = count_if(setup.commands.begin(), setup.commands.end(),
-                                       [](const std::string& s) { return s.find("go ") == 0; });
+    const auto numGoCommands = count_if(setup.commands.begin(), setup.commands.end(),
+                                        [](const std::string& s) { return s.find("go ") == 0; });
 
     TimePoint totalTime = 0;
 
@@ -344,16 +344,9 @@ void UCIEngine::benchmark(std::istream& args) {
 
             Search::LimitsType limits = parse_limits(is);
 
-            TimePoint elapsed = now();
-
             // Run with silenced network verification
             engine.go(limits);
             engine.wait_for_search_finished();
-
-            totalTime += now() - elapsed;
-
-            nodes += nodesSearched;
-            nodesSearched = 0;
         }
         else if (token == "position")
             position(is);
@@ -373,13 +366,14 @@ void UCIEngine::benchmark(std::istream& args) {
 
     int           numHashfullReadings = 0;
     constexpr int hashfullAges[]      = {0, 999};  // Only normal hashfull and touched hash.
-    int           totalHashfull[std::size(hashfullAges)] = {0};
-    int           maxHashfull[std::size(hashfullAges)]   = {0};
+    constexpr int hashfullAgeCount    = std::size(hashfullAges);
+    int           totalHashfull[hashfullAgeCount] = {0};
+    int           maxHashfull[hashfullAgeCount]   = {0};
 
     auto updateHashfullReadings = [&]() {
         numHashfullReadings += 1;
 
-        for (int i = 0; i < static_cast<int>(std::size(hashfullAges)); ++i)
+        for (int i = 0; i < hashfullAgeCount; ++i)
         {
             const int hashfull = engine.get_hashfull(hashfullAges[i]);
             maxHashfull[i]     = std::max(maxHashfull[i], hashfull);
@@ -401,6 +395,7 @@ void UCIEngine::benchmark(std::istream& args) {
 
             Search::LimitsType limits = parse_limits(is);
 
+            nodesSearched     = 0;
             TimePoint elapsed = now();
 
             // Run with silenced network verification
@@ -412,7 +407,6 @@ void UCIEngine::benchmark(std::istream& args) {
             updateHashfullReadings();
 
             nodes += nodesSearched;
-            nodesSearched = 0;
         }
         else if (token == "position")
             position(is);
@@ -518,8 +512,8 @@ WinRateParams win_rate_params(const Position& pos) {
     double m = std::clamp(material, 17, 78) / 58.0;
 
     // Return a = p_a(material) and b = p_b(material), see github.com/official-stockfish/WDL_model
-    constexpr double as[] = {-13.50030198, 40.92780883, -36.82753545, 386.83004070};
-    constexpr double bs[] = {96.53354896, -165.79058388, 90.89679019, 49.29561889};
+    constexpr double as[] = {-72.32565836, 185.93832038, -144.58862193, 416.44950446};
+    constexpr double bs[] = {83.86794042, -136.06112997, 69.98820887, 47.62901433};
 
     double a = (((as[0] * m + as[1]) * m + as[2]) * m) + as[3];
     double b = (((bs[0] * m + bs[1]) * m + bs[2]) * m) + bs[3];
@@ -565,7 +559,7 @@ int UCIEngine::to_cp(Value v, const Position& pos) {
 
     auto [a, b] = win_rate_params(pos);
 
-    return std::round(100 * int(v) / a);
+    return int(std::round(100 * int(v) / a));
 }
 
 int UCIEngine::to_int(Value v, const Position& pos) {

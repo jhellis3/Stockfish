@@ -76,10 +76,10 @@ jobs:
       - name: Compile ${{ matrix.config.binaries }} build
         run: |
           make clean
-          make -j4 profile-build ARCH=$BINARY COMP=$COMP WINE_PATH="$SDE"
+          make -j4 profile-build ARCH=$BINARY COMP=$COMP RUN_PREFIX="$SDE"
           make strip ARCH=$BINARY COMP=$COMP
-          WINE_PATH="$SDE" ../tests/signature.sh $benchref
-          mv ./crystal$EXT ../crystal-$NAME-$BINARY$EXT
+          RUN_PREFIX="$SDE" ../tests/signature.sh $benchref
+          mv ./crystal$EXT ../stockfish-$NAME-$BINARY$EXT
 
       - name: Remove non src files
         run: git clean -fx

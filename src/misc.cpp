@@ -1,6 +1,6 @@
 /*
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-  Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+  Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@ constexpr std::string_view version = "dev";
 
 // Our fancy logging facility. The trick here is to replace cin.rdbuf() and
 // cout.rdbuf() with two Tie objects that tie cin and cout to a file stream. We
-// can toggle the logging of std::cout and std:cin at runtime whilst preserving
+// can toggle the logging of std::cout and std::cin at runtime whilst preserving
 // usual I/O functionality, all without changing a single line of code!
 // Idea from http://groups.google.com/group/comp.lang.c++/msg/1d941c0f26ea0d81
 
@@ -259,12 +259,12 @@ std::string compiler_info() {
 #if defined(USE_SSE2)
     compiler += " SSE2";
 #endif
-    compiler += (HasPopCnt ? " POPCNT" : "");
 #if defined(USE_NEON_DOTPROD)
     compiler += " NEON_DOTPROD";
 #elif defined(USE_NEON)
     compiler += " NEON";
 #endif
+    compiler += (HasPopCnt ? " POPCNT" : "");
 
 #if !defined(NDEBUG)
     compiler += " DEBUG";
@@ -428,26 +428,48 @@ std::ostream& operator<<(std::ostream& os, SyncCout sc) {
 void sync_cout_start() { std::cout << IO_LOCK; }
 void sync_cout_end() { std::cout << IO_UNLOCK; }
 
+// Hash function based on public domain MurmurHash64A, by Austin Appleby.
+uint64_t hash_bytes(const char* data, size_t size) {
+    const uint64_t m = 0xc6a4a7935bd1e995ull;
+    const int      r = 47;
+
+    uint64_t h = size * m;
+
+    const char* end = data + (size & ~(size_t) 7);
+
+    for (const char* p = data; p != end; p += 8)
+    {
+        uint64_t k;
+        std::memcpy(&k, p, sizeof(k));
+
+        k *= m;
+        k ^= k >> r;
+        k *= m;
+
+        h ^= k;
+        h *= m;
+    }
+
+    if (size & 7)
+    {
+        uint64_t k = 0;
+        for (int i = (size & 7) - 1; i >= 0; i--)
+            k = (k << 8) | (uint64_t) end[i];
+
+        h ^= k;
+        h *= m;
+    }
+
+    h ^= h >> r;
+    h *= m;
+    h ^= h >> r;
+
+    return h;
+}
+
 // Trampoline helper to avoid moving Logger to misc.h
 void start_logger(const std::string& fname) { Logger::start(fname); }
 
-
-#ifdef NO_PREFETCH
-
-void prefetch(const void*) {}
-
-#else
-
-void prefetch(const void* addr) {
-
-    #if defined(_MSC_VER)
-    _mm_prefetch((char const*) addr, _MM_HINT_T0);
-    #else
-    __builtin_prefetch(addr);
-    #endif
-}
-
-#endif
 
 #ifdef _WIN32
     #include <direct.h>

@@ -1,5 +1,5 @@
 # Stockfish, a UCI chess playing engine derived from Glaurung 2.1
-# Copyright (C) 2004-2025 The Stockfish developers (see AUTHORS file)
+# Copyright (C) 2004-2026 The Stockfish developers (see AUTHORS file)
 #
 # Stockfish is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,6 +25,21 @@ ifeq ($(KERNEL),Linux)
 	OS := $(shell uname -o)
 endif
 
+### Command prefix to run the built executable (e.g. wine, sde, qemu)
+### Backward compatible alias: WINE_PATH (deprecated)
+ifneq ($(strip $(WINE_PATH)),)
+ifeq ($(strip $(RUN_PREFIX)),)
+RUN_PREFIX := $(WINE_PATH)
+endif
+ifeq ($(MAKELEVEL),0)
+ifneq ($(strip $(RUN_PREFIX)),$(strip $(WINE_PATH)))
+$(warning *** Both RUN_PREFIX and WINE_PATH are set; ignoring WINE_PATH. ***)
+else
+$(warning *** WINE_PATH is deprecated; use RUN_PREFIX instead. ***)
+endif
+endif
+endif
+
 ### Target Windows OS
 ifeq ($(OS),Windows_NT)
 	ifneq ($(COMP),ndk)
@@ -32,8 +47,8 @@ ifeq ($(OS),Windows_NT)
 	endif
 else ifeq ($(COMP),mingw)
 	target_windows = yes
-	ifeq ($(WINE_PATH),)
-		WINE_PATH := $(shell which wine)
+	ifeq ($(RUN_PREFIX),)
+		RUN_PREFIX := $(shell which wine)
 	endif
 endif
 
@@ -49,22 +64,23 @@ PREFIX = /usr/local
 BINDIR = $(PREFIX)/bin
 
 ### Built-in benchmark for pgo-builds
-PGOBENCH = $(WINE_PATH) ./$(EXE) bench
+PGOBENCH = $(RUN_PREFIX) ./$(EXE) bench
 
 ### Source and object files
 SRCS = benchmark.cpp bitboard.cpp evaluate.cpp main.cpp \
 	misc.cpp movegen.cpp movepick.cpp position.cpp \
 	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp \
-	nnue/nnue_accumulator.cpp nnue/nnue_misc.cpp nnue/features/half_ka_v2_hm.cpp nnue/network.cpp \
+	nnue/nnue_accumulator.cpp nnue/nnue_misc.cpp nnue/network.cpp \
+	nnue/features/half_ka_v2_hm.cpp nnue/features/full_threats.cpp \
 	engine.cpp score.cpp memory.cpp
 
 HEADERS = benchmark.h bitboard.h evaluate.h misc.h movegen.h movepick.h history.h \
-		nnue/nnue_misc.h nnue/features/half_ka_v2_hm.h nnue/layers/affine_transform.h \
-		nnue/layers/affine_transform_sparse_input.h nnue/layers/clipped_relu.h \
-		nnue/layers/sqr_clipped_relu.h nnue/nnue_accumulator.h nnue/nnue_architecture.h \
-		nnue/nnue_common.h nnue/nnue_feature_transformer.h nnue/simd.h position.h \
-		search.h syzygy/tbprobe.h thread.h thread_win32_osx.h timeman.h \
-		tt.h tune.h types.h uci.h ucioption.h perft.h nnue/network.h engine.h score.h numa.h memory.h
+		nnue/nnue_misc.h nnue/features/half_ka_v2_hm.h nnue/features/full_threats.h \
+		nnue/layers/affine_transform.h nnue/layers/affine_transform_sparse_input.h \
+		nnue/layers/clipped_relu.h nnue/layers/sqr_clipped_relu.h nnue/nnue_accumulator.h \
+		nnue/nnue_architecture.h nnue/nnue_common.h nnue/nnue_feature_transformer.h nnue/simd.h \
+		position.h search.h syzygy/tbprobe.h thread.h thread_win32_osx.h timeman.h \
+		tt.h tune.h types.h uci.h ucioption.h perft.h nnue/network.h engine.h score.h numa.h memory.h shm.h shm_linux.h
 
 OBJS = $(notdir $(SRCS:.cpp=.o))
 
@@ -97,7 +113,6 @@ VPATH = syzygy:nnue:nnue/features
 # avx2 = yes/no       --- -mavx2             --- Use Intel Advanced Vector Extensions 2
 # avxvnni = yes/no    --- -mavxvnni          --- Use Intel Vector Neural Network Instructions AVX
 # avx512 = yes/no     --- -mavx512bw         --- Use Intel Advanced Vector Extensions 512
-# vnni256 = yes/no    --- -mavx256vnni       --- Use Intel Vector Neural Network Instructions 512 with 256bit operands
 # vnni512 = yes/no    --- -mavx512vnni       --- Use Intel Vector Neural Network Instructions 512
 # avx512icl = yes/no  --- ... multiple ...   --- Use All AVX-512 features available on both Intel Ice Lake and AMD Zen 4
 # altivec = yes/no    --- -maltivec          --- Use PowerPC Altivec SIMD extension
@@ -128,7 +143,7 @@ endif
 # explicitly check for the list of supported architectures (as listed with make help),
 # the user can override with `make ARCH=x86-64-avx512icl SUPPORTED_ARCH=true`
 ifeq ($(ARCH), $(filter $(ARCH), \
-                 x86-64-avx512icl x86-64-vnni512 x86-64-vnni256 x86-64-avx512 x86-64-avxvnni \
+                 x86-64-avx512icl x86-64-vnni512 x86-64-avx512 x86-64-avxvnni \
                  x86-64-bmi2 x86-64-avx2 x86-64-sse41-popcnt x86-64-modern x86-64-ssse3 x86-64-sse3-popcnt \
                  x86-64 x86-32-sse41-popcnt x86-32-sse2 x86-32 ppc-64 ppc-64-altivec ppc-64-vsx ppc-32 e2k \
                  armv7 armv7-neon armv8 armv8-dotprod apple-silicon general-64 general-32 riscv64 \
@@ -153,7 +168,6 @@ sse41 = no
 avx2 = no
 avxvnni = no
 avx512 = no
-vnni256 = no
 vnni512 = no
 avx512icl = no
 altivec = no
@@ -267,17 +281,6 @@ ifeq ($(findstring -avx512,$(ARCH)),-avx512)
 	avx2 = yes
 	pext = yes
 	avx512 = yes
-endif
-
-ifeq ($(findstring -vnni256,$(ARCH)),-vnni256)
-	popcnt = yes
-	sse = yes
-	sse2 = yes
-	ssse3 = yes
-	sse41 = yes
-	avx2 = yes
-	pext = yes
-	vnni256 = yes
 endif
 
 ifeq ($(findstring -vnni512,$(ARCH)),-vnni512)
@@ -512,7 +515,7 @@ ifeq ($(COMP),clang)
 	endif
 
 	CXXFLAGS += -pedantic -Wextra -Wshadow -Wmissing-prototypes \
-	            -Wconditional-uninitialized
+	            -Wconditional-uninitialized -flax-vector-conversions=none
 
 	ifeq ($(filter $(KERNEL),Darwin OpenBSD FreeBSD),)
 	ifeq ($(target_windows),)
@@ -619,6 +622,8 @@ ifeq ($(COMP),gcc)
 	ifneq ($(gccisclang),)
 		profile_make = clang-profile-make
 		profile_use = clang-profile-use
+	else
+		CXXFLAGS += -Wstack-usage=128000
 	endif
 endif
 
@@ -631,6 +636,19 @@ ifneq ($(comp),mingw)
 		ifneq ($(KERNEL),Haiku)
 			ifneq ($(COMP),ndk)
 				LDFLAGS += -lpthread
+
+				add_lrt = yes
+				ifeq ($(target_windows),yes)
+					add_lrt = no
+				endif
+
+				ifeq ($(KERNEL),Darwin)
+					add_lrt = no
+				endif
+
+				ifeq ($(add_lrt),yes)
+					LDFLAGS += -lrt
+				endif
 			endif
 		endif
 	endif
@@ -641,6 +659,7 @@ ifeq ($(debug),no)
 	CXXFLAGS += -DNDEBUG
 else
 	CXXFLAGS += -g
+	CXXFLAGS += -D_GLIBCXX_ASSERTIONS -D_GLIBCXX_DEBUG
 endif
 
 ### 3.2.2 Debugging with undefined behavior sanitizers
@@ -724,17 +743,10 @@ ifeq ($(avx512),yes)
 	endif
 endif
 
-ifeq ($(vnni256),yes)
-	CXXFLAGS += -DUSE_VNNI
-	ifeq ($(comp),$(filter $(comp),gcc clang mingw icx))
-		CXXFLAGS += -mavx512f -mavx512bw -mavx512vnni -mavx512dq -mavx512vl -mprefer-vector-width=256
-	endif
-endif
-
 ifeq ($(vnni512),yes)
 	CXXFLAGS += -DUSE_VNNI
 	ifeq ($(comp),$(filter $(comp),gcc clang mingw icx))
-		CXXFLAGS += -mavx512f -mavx512bw -mavx512vnni -mavx512dq -mavx512vl -mprefer-vector-width=512
+		CXXFLAGS += -mavx512f -mavx512bw -mavx512vnni -mavx512dq -mavx512vl
 	endif
 endif
 
@@ -842,27 +854,40 @@ endif
 ### This is a mix of compile and link time options because the lto link phase
 ### needs access to the optimization flags.
 ifeq ($(optimize),yes)
-ifeq ($(debug), no)
+ifeq ($(debug),no)
+	ifneq ($(KERNEL),Darwin)
+		LLD_BIN := $(shell command -v ld.lld 2>/dev/null)
+		ifeq ($(LLD_BIN),)
+			LLD_BIN := $(shell command -v lld 2>/dev/null)
+		endif
+		ifneq ($(LLD_BIN),)
+			ifeq ($(comp),clang)
+				LDFLAGS += -fuse-ld=lld
+			else ifeq ($(comp),gcc)
+				ifneq ($(gccisclang),)
+					LDFLAGS += -fuse-ld=lld
+				endif
+			endif
+		endif
+	endif
+
 	ifeq ($(comp),$(filter $(comp),clang icx))
 		CXXFLAGS += -flto=full
 		ifeq ($(comp),icx)
 			CXXFLAGS += -fwhole-program-vtables
-                endif
-		ifeq ($(target_windows),yes)
-			CXXFLAGS += -fuse-ld=lld
 		endif
 		LDFLAGS += $(CXXFLAGS)
 
 # GCC and CLANG use different methods for parallelizing LTO and CLANG pretends to be
 # GCC on some systems.
 	else ifeq ($(comp),gcc)
-	ifeq ($(gccisclang),)
-		CXXFLAGS += -flto -flto-partition=one
-		LDFLAGS += $(CXXFLAGS) -flto=jobserver
-	else
-		CXXFLAGS += -flto=full
-		LDFLAGS += $(CXXFLAGS)
-	endif
+		ifeq ($(gccisclang),)
+			CXXFLAGS += -flto -flto-partition=one
+			LDFLAGS += $(CXXFLAGS) -flto=jobserver
+		else
+			CXXFLAGS += -flto=full
+			LDFLAGS += $(CXXFLAGS)
+		endif
 
 # To use LTO and static linking on Windows,
 # the tool chain requires gcc version 10.1 or later.
@@ -878,6 +903,13 @@ endif
 ifeq ($(OS), Android)
 	CXXFLAGS += -fPIE
 	LDFLAGS += -fPIE -pie
+endif
+
+### 3.11 Inline settings
+ifeq ($(optimize), yes)
+	ifeq ($(comp), clang)
+		CXXFLAGS += -Xclang -mllvm -Xclang -inline-threshold=500
+	endif
 endif
 
 ### ==========================================================================
@@ -905,7 +937,6 @@ help:
 	echo "native                  > select the best architecture for the host processor (default)" && \
 	echo "x86-64-avx512icl        > x86 64-bit with minimum avx512 support of Intel Ice Lake or AMD Zen 4" && \
 	echo "x86-64-vnni512          > x86 64-bit with vnni 512bit support" && \
-	echo "x86-64-vnni256          > x86 64-bit with vnni 512bit support, limit operands to 256bit wide" && \
 	echo "x86-64-avx512           > x86 64-bit with avx512 support" && \
 	echo "x86-64-avxvnni          > x86 64-bit with vnni 256bit support" && \
 	echo "x86-64-bmi2             > x86 64-bit with bmi2 support" && \
@@ -1050,7 +1081,6 @@ config-sanity: net
 	echo "avx2: '$(avx2)'" && \
 	echo "avxvnni: '$(avxvnni)'" && \
 	echo "avx512: '$(avx512)'" && \
-	echo "vnni256: '$(vnni256)'" && \
 	echo "vnni512: '$(vnni512)'" && \
 	echo "avx512icl: '$(avx512icl)'" && \
 	echo "altivec: '$(altivec)'" && \
@@ -1087,7 +1117,6 @@ config-sanity: net
 	(test "$(sse41)" = "yes" || test "$(sse41)" = "no") && \
 	(test "$(avx2)" = "yes" || test "$(avx2)" = "no") && \
 	(test "$(avx512)" = "yes" || test "$(avx512)" = "no") && \
-	(test "$(vnni256)" = "yes" || test "$(vnni256)" = "no") && \
 	(test "$(vnni512)" = "yes" || test "$(vnni512)" = "no") && \
 	(test "$(avx512icl)" = "yes" || test "$(avx512icl)" = "no") && \
 	(test "$(altivec)" = "yes" || test "$(altivec)" = "no") && \

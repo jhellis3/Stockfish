@@ -31,21 +31,44 @@ jobs:
             comp: ndk
             run_armv8_tests: true
             shell: bash
-          - name: MacOS 13 Apple Clang
-            os: macos-13
+          - name: Android NDK arm
+            os: ubuntu-22.04
+            compiler: armv7a-linux-androideabi29-clang++
+            comp: ndk
+            run_armv7_tests: true
+            shell: bash
+          # Currently segfaults in the CI unrelated to a Stockfish change.
+          # - name: Linux GCC riscv64
+          #   os: ubuntu-22.04
+          #   compiler: g++
+          #   comp: gcc
+          #   run_riscv64_tests: true
+          #   base_image: "riscv64/alpine:edge"
+          #   platform: linux/riscv64
+          #   shell: bash
+          - name: Linux GCC ppc64
+            os: ubuntu-22.04
+            compiler: g++
+            comp: gcc
+            run_ppc64_tests: true
+            base_image: "ppc64le/alpine:latest"
+            platform: linux/ppc64le
+            shell: bash
+          - name: macOS 15 Apple Clang
+            os: macos-15-intel
             compiler: clang++
             comp: clang
             run_64bit_tests: true
             shell: bash
-          - name: MacOS 14 Apple Clang M1
-            os: macos-14
+          - name: macOS 15 Apple Clang M1
+            os: macos-15
             compiler: clang++
             comp: clang
             run_64bit_tests: false
             run_m1_tests: true
             shell: bash
-          - name: MacOS 13 GCC 11
-            os: macos-13
+          - name: macOS 15 GCC 11
+            os: macos-15-intel
             compiler: g++-11
             comp: gcc
             run_64bit_tests: true
