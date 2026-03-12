@@ -513,13 +513,10 @@ Bitboard Position::attackers_to(Square s, Bitboard occupied) const {
 
 bool Position::attackers_to_exist(Square s, Bitboard occupied, Color c) const {
 
-    return ((attacks_bb<ROOK>(s) & pieces(c, ROOK, QUEEN))
-            && (attacks_bb<ROOK>(s, occupied) & pieces(c, ROOK, QUEEN)))
-        || ((attacks_bb<BISHOP>(s) & pieces(c, BISHOP, QUEEN))
-            && (attacks_bb<BISHOP>(s, occupied) & pieces(c, BISHOP, QUEEN)))
-        || (((attacks_bb<PAWN>(s, ~c) & pieces(PAWN)) | (attacks_bb<KNIGHT>(s) & pieces(KNIGHT))
-             | (attacks_bb<KING>(s) & pieces(KING)))
-            & pieces(c));
+    return (attacks_bb<ROOK>(s, occupied) & pieces(c, ROOK, QUEEN))
+        || (attacks_bb<BISHOP>(s, occupied) & pieces(c, BISHOP, QUEEN))
+        || (attacks_bb<PAWN>(s, ~c) & pieces(c, PAWN))
+        || (attacks_bb<KNIGHT>(s) & pieces(c, KNIGHT)) || (attacks_bb<KING>(s) & pieces(c, KING));
 }
 
 // Tests whether a pseudo-legal move is legal
@@ -1134,7 +1131,9 @@ void Position::update_piece_threats(Piece                     pc,
     if constexpr (PutPiece)
     {
         dts->threatenedSqs |= threatened;
-        dts->threateningSqs |= s;
+        // A bit may only be set if that square actually produces a threat, so we
+        // must guard setting the square accordingly
+        dts->threateningSqs |= Bitboard(bool(threatened)) << s;
     }
 
     DirtyThreat dt_template{pc, NO_PIECE, s, Square(0), PutPiece};
@@ -1145,7 +1144,7 @@ void Position::update_piece_threats(Piece                     pc,
 
     if constexpr (PutPiece)
     {
-        dts->threatenedSqs |= s;
+        dts->threatenedSqs |= Bitboard(bool(all_attackers)) << s;  // same as above
         dts->threateningSqs |= all_attackers;
     }
 
