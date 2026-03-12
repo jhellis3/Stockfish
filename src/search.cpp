@@ -251,14 +251,13 @@ void Search::Worker::iterative_deepening() {
 
     Move pv[MAX_PLY + 1];
 
-    Depth lastBestMoveDepth = 0;
     Value lastBestScore     = -VALUE_INFINITE;
     auto  lastBestPV        = std::vector{Move::none()};
 
     Value  alpha, beta;
     Value  bestValue     = -VALUE_INFINITE;
     Color  us            = rootPos.side_to_move();
-    double timeReduction = 1, totBestMoveChanges = 0;
+    double totBestMoveChanges = 0;
     int    delta, iterIdx                        = 0;
 
     // Allocate stack with extra size to allow access from (ss - 7) to (ss + 2):
@@ -437,7 +436,6 @@ void Search::Worker::iterative_deepening() {
         {
             lastBestPV        = rootMoves[0].pv;
             lastBestScore     = rootMoves[0].score;
-            lastBestMoveDepth = rootDepth;
         }
 
         if (!mainThread)
@@ -465,21 +463,16 @@ void Search::Worker::iterative_deepening() {
             double fallingEval = (11.396 + 2.035 * (mainThread->bestPreviousAverageScore - bestValue)
                                      +  0.968 * (mainThread->iterValue[iterIdx] - bestValue)) / 100.0;
 
-            fallingEval = std::clamp(fallingEval, 0.57, 1.70);
+            fallingEval = std::clamp(fallingEval, 0.67, 1.70);
 
-            // If the bestMove is stable over several iterations, reduce time accordingly
-            timeReduction = lastBestMoveDepth + 6 < completedDepth ? 0.68
-                                                                   : (mainThread->previousTimeReduction == 0.68 ? 2.20
-                                                                                                                : 1.52);
-
-            double bestMoveInstability = 1.02 + 2.14 * totBestMoveChanges / threads.size();
+            double bestMoveInstability = 0.67 + 2 * totBestMoveChanges / threads.size();
             auto elapsedT = elapsed();
             auto optimumT = mainThread->tm.optimum();
 
             // Stop the search if we have only one legal move, or if available time elapsed
             if (   (rootMoves.size() == 1 && (elapsedT > optimumT / 16))
                 || elapsedT > 4.33 * optimumT
-                || elapsedT > optimumT * fallingEval * timeReduction * bestMoveInstability)
+                || elapsedT > optimumT * fallingEval * bestMoveInstability)
             {
                 // If we are allowed to ponder do not stop the search now but
                 // keep pondering until the GUI sends "ponderhit" or "stop".
@@ -496,8 +489,6 @@ void Search::Worker::iterative_deepening() {
 
     if (!mainThread)
         return;
-
-    mainThread->previousTimeReduction = timeReduction;
 }
 
 
@@ -599,6 +590,7 @@ Value Search::Worker::search(
     bool    capture, opponentWorsening,
             ttCapture, kingDanger, ourMove, nullParity;
     Piece   movedPiece;
+    uint8_t rule50;
 
     SearchedList capturesSearched;
     SearchedList quietsSearched;
@@ -616,6 +608,7 @@ Value Search::Worker::search(
     ss->secondaryLine   = false;
     ss->mainLine        = false;
     drawValue           = contempt[us];
+    rule50              = std::min(90, pos.rule50_count());;
 
     // Check for the available remaining time
     if (is_mainthread())
@@ -669,6 +662,7 @@ Value Search::Worker::search(
     ss->ttHit    = ttHit;
     ttData.move  = rootNode ? rootMoves[pvIdx].pv[0] : ttHit ? ttData.move : Move::none();
     ttData.value = ttHit ? value_from_tt(ttData.value, ss->ply) : VALUE_NONE;
+    ttData.value = (abs(ttData.value) > VALUE_MAX_EVAL) ? ttData.value : ttData.value * (100 - rule50) / (100 - ttData.rule50);
     ss->ttPv     = excludedMove ? ss->ttPv : PvNode || (ttHit && ttData.is_pv);
     ttCapture    = ttData.move && pos.capture_stage(ttData.move);
 
@@ -722,7 +716,7 @@ Value Search::Worker::search(
         int piecesCount = popcount(pos.pieces());
 
         if (    piecesCount <= tbConfig.cardinality
-            &&  pos.rule50_count() == 0
+            &&  rule50 == 0
             && !pos.can_castle(ANY_CASTLING))
         {
             TB::ProbeState err;
@@ -751,7 +745,7 @@ Value Search::Worker::search(
                     || (v >  drawScore && alpha < tbValue - 9))
                 {
                     ttWriter.write(posKey, tbValue, ss->ttPv, v > drawScore ? BOUND_LOWER : v < -drawScore ? BOUND_UPPER : BOUND_EXACT,
-                                   depth, Move::none(), VALUE_NONE, tt.generation());
+                                   depth, Move::none(), VALUE_NONE, tt.generation(), rule50);
 
                     return tbValue;
                 }
@@ -801,8 +795,8 @@ Value Search::Worker::search(
         ss->staticEval = eval = to_corrected_static_eval(unadjustedStaticEval, correctionValue);
 
         // Static evaluation is saved as it was before adjustment by correction history
-        ttWriter.write(posKey, VALUE_NONE, ss->ttPv, BOUND_NONE, DEPTH_UNSEARCHED, Move::none(),
-                       unadjustedStaticEval, tt.generation());
+        ttWriter.write(posKey, VALUE_NONE, false, BOUND_NONE, DEPTH_UNSEARCHED, Move::none(),
+                       unadjustedStaticEval, tt.generation(), rule50);
     }
 
     // Use static evaluation difference to improve quiet move ordering
@@ -933,7 +927,7 @@ Value Search::Worker::search(
                    {
                        if (!excludedMove)
                            ttWriter.write(posKey, value_to_tt(value, ss->ply), ss->ttPv,
-                                     BOUND_LOWER, depth - 3, move, ss->staticEval, tt.generation());
+                                     BOUND_LOWER, depth - 3, move, ss->staticEval, tt.generation(), rule50);
 
                        return value;
                    }
@@ -1472,7 +1466,7 @@ Value Search::Worker::search(
                        : PvNode && bestMove ? BOUND_EXACT
                                             : BOUND_UPPER,
                        moveCount != 0 ? depth : std::min(MAX_PLY - 1, depth + 6), bestMove,
-                       unadjustedStaticEval, tt.generation());
+                       unadjustedStaticEval, tt.generation(), rule50);
 
     // Adjust correction history if the best move is not a capture
     // and the error direction matches whether we are above/below bounds.
@@ -1513,6 +1507,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     Value bestValue, value, futilityBase, drawValue;
     bool  pvHit, givesCheck, capture, gameCycle;
     int   moveCount;
+    uint8_t rule50 = std::min(90, pos.rule50_count());
     Color us = pos.side_to_move();
 
     // Step 1. Initialize node
@@ -1559,6 +1554,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     ss->ttHit    = ttHit;
     ttData.move  = ttHit ? ttData.move : Move::none();
     ttData.value = ttHit ? value_from_tt(ttData.value, ss->ply) : VALUE_NONE;
+    ttData.value = (abs(ttData.value) > VALUE_MAX_EVAL) ? ttData.value : ttData.value * (100 - rule50) / (100 - ttData.rule50);
     pvHit        = ttHit && ttData.is_pv;
 
     // At non-PV nodes we check for an early TT cutoff
@@ -1616,7 +1612,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
             if (!ss->ttHit)
                 ttWriter.write(posKey, value_to_tt(bestValue, ss->ply), false, BOUND_LOWER,
                                DEPTH_UNSEARCHED, Move::none(), unadjustedStaticEval,
-                               tt.generation());
+                               tt.generation(), rule50);
             return bestValue;
         }
 
@@ -1746,7 +1742,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     // is saved as it was before adjustment by correction history.
     ttWriter.write(posKey, value_to_tt(bestValue, ss->ply), pvHit,
                    bestValue >= beta ? BOUND_LOWER : BOUND_UPPER, DEPTH_QS, bestMove,
-                   unadjustedStaticEval, tt.generation());
+                   unadjustedStaticEval, tt.generation(), rule50);
 
     assert(bestValue > -VALUE_INFINITE && bestValue < VALUE_INFINITE);
 

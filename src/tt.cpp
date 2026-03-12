@@ -35,8 +35,9 @@ namespace Stockfish {
 
 // TTEntry struct is the 16 bytes transposition table entry, defined as below:
 //
-// key        64 bit
-// depth       8 bit
+// key        32 bit
+// depth      16 bit
+// rule50      8 bit
 // generation  5 bit
 // pv node     1 bit
 // bound type  2 bit
@@ -52,20 +53,21 @@ struct TTEntry {
     // Convert internal bitfields to external types
     TTData read() const {
         return TTData{Move(move16),           Value(value16),
-                      Value(eval16),          Depth(depth8 + DEPTH_ENTRY_OFFSET),
-                      Bound(genBound8 & 0x3), bool(genBound8 & 0x4)};
+                      Value(eval16),          Depth(depth16 + DEPTH_ENTRY_OFFSET),
+                      Bound(genBound8 & 0x3), bool(genBound8 & 0x4), uint8_t(r50count8)};
     }
 
     bool is_occupied() const;
-    void save(Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev, uint8_t generation8);
+    void save(Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev, uint8_t generation8, uint8_t r50count);
     // The returned age is a multiple of TranspositionTable::GENERATION_DELTA
     uint8_t relative_age(const uint8_t generation8) const;
 
    private:
     friend class TranspositionTable;
 
-    uint64_t key;
-    uint8_t  depth8;
+    uint32_t key32;
+    uint8_t  r50count8;
+    uint16_t  depth16;
     uint8_t  genBound8;
     Move     move16;
     int16_t  value16;
@@ -87,26 +89,27 @@ static constexpr int GENERATION_MASK = (0xFF << GENERATION_BITS) & 0xFF;
 // DEPTH_ENTRY_OFFSET exists because 1) we use `bool(depth8)` as the occupancy check, but
 // 2) we need to store negative depths for QS. (`depth8` is the only field with "spare bits":
 // we sacrifice the ability to store depths greater than 1<<8 less the offset, as asserted in `save`.)
-bool TTEntry::is_occupied() const { return bool(depth8); }
+bool TTEntry::is_occupied() const { return bool(depth16); }
 
 // Populates the TTEntry with a new node's data, possibly
 // overwriting an old position. The update is not atomic and can be racy.
 void TTEntry::save(
-  Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev, uint8_t generation8) {
+  Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev, uint8_t generation8, uint8_t r50count) {
 
     // Preserve the old ttmove if we don't have a new one
-    if (m || k != key)
+    if (m || uint32_t(k) != key32)
         move16 = m;
 
     // Overwrite less valuable entries (cheapest checks first)
-    if (b == BOUND_EXACT || k != key || d - DEPTH_ENTRY_OFFSET + 2 * pv > depth8 - 2
+    if (b == BOUND_EXACT || uint32_t(k) != key32 || d - DEPTH_ENTRY_OFFSET + 2 * pv > depth16 - 2
         || relative_age(generation8))
     {
         assert(d > DEPTH_ENTRY_OFFSET);
         assert(d < MAX_PLY);
 
-        key       = k;
-        depth8    = uint8_t(std::min(255, d - DEPTH_ENTRY_OFFSET));
+        key32     = uint32_t(k);
+        r50count8 = uint8_t(r50count);
+        depth16   = uint16_t(d - DEPTH_ENTRY_OFFSET);
         genBound8 = uint8_t(generation8 | uint8_t(pv) << 2 | b);
         value16   = int16_t(v);
         eval16    = int16_t(ev);
@@ -129,8 +132,8 @@ TTWriter::TTWriter(TTEntry* tte) :
     entry(tte) {}
 
 void TTWriter::write(
-  Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev, uint8_t generation8) {
-    entry->save(k, v, pv, b, d, m, ev, generation8);
+  Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev, uint8_t generation8, uint8_t r50count) {
+    entry->save(k, v, pv, b, d, m, ev, generation8, r50count);
 }
 
 
@@ -223,8 +226,10 @@ uint8_t TranspositionTable::generation() const { return generation8; }
 std::tuple<bool, TTData, TTWriter> TranspositionTable::probe(const Key key) const {
 
     TTEntry* const tte = first_entry(key);
+    const uint32_t key32 = uint32_t(key);  // Use the low 32 bits as key inside the cluster
+
     for (int i = 0; i < ClusterSize; ++i)
-        if (tte[i].key == key)
+        if (tte[i].key32 == key32)
             // This gap is the main place for read races.
             // After `read()` completes that copy is final, but may be self-inconsistent.
             return {tte[i].is_occupied(), tte[i].read(), TTWriter(&tte[i])};
@@ -232,12 +237,12 @@ std::tuple<bool, TTData, TTWriter> TranspositionTable::probe(const Key key) cons
     // Find an entry to be replaced according to the replacement strategy
     TTEntry* replace = tte;
     for (int i = 1; i < ClusterSize; ++i)
-        if (replace->depth8 - replace->relative_age(generation8)
-            > tte[i].depth8 - tte[i].relative_age(generation8))
+        if (replace->depth16 - replace->relative_age(generation8)
+            > tte[i].depth16 - tte[i].relative_age(generation8))
             replace = &tte[i];
 
     return {false,
-            TTData{Move::none(), VALUE_NONE, VALUE_NONE, DEPTH_ENTRY_OFFSET, BOUND_NONE, false},
+            TTData{Move::none(), VALUE_NONE, VALUE_NONE, DEPTH_ENTRY_OFFSET, BOUND_NONE, false, 0},
             TTWriter(replace)};
 }
 

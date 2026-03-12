@@ -50,9 +50,13 @@ Value Eval::evaluate(const Eval::NNUE::Networks&    networks,
 
     Value v = (125 * psqt + 131 * positional) / 128;
 
-    v = v * (133 - r50) / 100;
+    int material = 534 * pos.count<PAWN>() + pos.non_pawn_material();
+
+    v = (v * (77871 + material)) / 77871;
 
     v += contempt;
+
+    v = v * (100 - r50) / 100;
 
     // Do not return evals greater than a TB result
     v = std::clamp(v, -VALUE_MAX_EVAL, VALUE_MAX_EVAL);
