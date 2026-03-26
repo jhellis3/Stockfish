@@ -133,7 +133,7 @@ void update_all_stats(const Position& pos,
                       Depth           depth,
                       Move            ttMove);
 
-bool is_shuffling(Move move, Stack* const ss, const Position& pos) {
+[[maybe_unused]] bool is_shuffling(Move move, Stack* const ss, const Position& pos) {
     if (pos.capture_stage(move) || pos.rule50_count() < 11)
         return false;
     if (pos.state()->pliesFromNull <= 6 || ss->ply < 18)
