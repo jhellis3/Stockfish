@@ -7,9 +7,12 @@ jobs:
   Matetrack:
     name: Matetrack
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout SF repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           path: Stockfish
@@ -20,11 +23,11 @@ jobs:
         run: make -j profile-build
 
       - name: Checkout matetrack repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: vondele/matetrack
           path: matetrack
-          ref: 6c8405fac9028ca66a077f5c96c918fec0ef8d1d
+          ref: 1e7f6c6fff8e2f23923880a94fae596281346395
           persist-credentials: false
 
       - name: matetrack install deps
@@ -33,12 +36,19 @@ jobs:
 
       - name: cache syzygy
         id: cache-syzygy
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
            path: |
               matetrack/3-4-5-wdl/
               matetrack/3-4-5-dtz/
            key: key-syzygy
+
+      - name: cache syzygy test data
+        id: cache-syzygy-test
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+           path: Stockfish/tests/syzygy
+           key: syzygy-test-9b9aa13
 
       - name: download syzygy 3-4-5 if needed
         working-directory: matetrack
@@ -46,6 +56,13 @@ jobs:
         run: |
           wget --no-verbose -r -nH --cut-dirs=2 --no-parent --reject="index.html*" -e robots=off https://tablebase.lichess.ovh/tables/standard/3-4-5-wdl/
           wget --no-verbose -r -nH --cut-dirs=2 --no-parent --reject="index.html*" -e robots=off https://tablebase.lichess.ovh/tables/standard/3-4-5-dtz/
+
+
+      # matecheck/python chess is not good at handling crashing engines. Do a basic check first.
+      - name: Test engine functionality
+        working-directory: Stockfish/src
+        run: |
+           python3 ../tests/instrumented.py --none ./stockfish
 
       - name: Run matetrack th1
         working-directory: matetrack
@@ -68,10 +85,7 @@ jobs:
       - name: Run matetrack th4 go-mate
         working-directory: matetrack
         run: |
-          head -n 21 matetrack.epd > gomates.epd
-          head -n 44 matedtrack.epd >> gomates.epd
-          head -n 18 mates2000.epd >> gomates.epd
-          python matecheck.py --engine /home/runner/work/Stockfish/Stockfish/Stockfish/src/stockfish --epdFile gomates.epd --mate 0 --threads 4 | tee matecheck4gm.out
+          python matecheck.py --engine /home/runner/work/Stockfish/Stockfish/Stockfish/src/stockfish --epdFile matetrack.epd matedtrack.epd --bmMax 2 --mate 0 --threads 4 | tee matecheck4gm.out
           ! grep "issues were detected" matecheck4gm.out > /dev/null
           total=$(grep "Total FENs:" matecheck4gm.out | awk '{print $3}')
           bmates=$(grep "Best mates:" matecheck4gm.out | awk '{print $3}')
@@ -79,6 +93,18 @@ jobs:
             echo "At least one go-mate search did not yield expected mate, see matecheck4gm.out" >&2
             exit 1
           fi
+
+      - name: Run matetrack th1 multiPV
+        working-directory: matetrack
+        run: |
+          python matecheck.py --engine /home/runner/work/Stockfish/Stockfish/Stockfish/src/stockfish --epdFile matetrack.epd matedtrack.epd --bmMax 10 --nodes 5000 --multiPV 20 --checkMultiPVs | tee matecheck1mpv.out
+          ! grep "issues were detected" matecheck1mpv.out > /dev/null
+
+      - name: Run matetrack th4 multiPV
+        working-directory: matetrack
+        run: |
+          python matecheck.py --engine /home/runner/work/Stockfish/Stockfish/Stockfish/src/stockfish --epdFile matetrack.epd matedtrack.epd --bmMax 10 --nodes 5000 --threads 4 --multiPV 20 --checkMultiPVs | tee matecheck4mpv.out
+          ! grep "issues were detected" matecheck4mpv.out > /dev/null
 
       - name: Run matetrack th1 with --syzygy50MoveRule false
         working-directory: matetrack

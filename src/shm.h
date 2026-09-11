@@ -36,13 +36,10 @@
 #include <utility>
 #include <variant>
 
-#if defined(__linux__) && !defined(__ANDROID__)
-    #include "shm_linux.h"
-#endif
-
-#if defined(__ANDROID__)
-    #include <limits.h>
-    #define SF_MAX_SEM_NAME_LEN NAME_MAX
+#if (defined(__linux__) && !defined(__ANDROID__)) || defined(__APPLE__) || defined(__FreeBSD__) \
+  || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
+    #define USE_UNIX_SHM
+    #include "shm_unix.h"
 #endif
 
 #include "types.h"
@@ -100,14 +97,14 @@ namespace Stockfish {
 // amount of bytes of the path; in particular it can a hash of an empty string.
 
 inline std::string getExecutablePathHash() {
-    char        executable_path[4096] = {0};
-    std::size_t path_length           = 0;
+    char  executable_path[4096] = {0};
+    usize path_length           = 0;
 
 #if defined(_WIN32)
     path_length = GetModuleFileNameA(NULL, executable_path, sizeof(executable_path));
 
 #elif defined(__APPLE__)
-    uint32_t size = sizeof(executable_path);
+    u32 size = sizeof(executable_path);
     if (_NSGetExecutablePath(executable_path, &size) == 0)
     {
         path_length = std::strlen(executable_path);
@@ -122,8 +119,8 @@ inline std::string getExecutablePathHash() {
     }
 
 #elif defined(__FreeBSD__)
-    size_t size   = sizeof(executable_path);
-    int    mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
+    usize size   = sizeof(executable_path);
+    int   mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
     if (sysctl(mib, 4, executable_path, &size, NULL, 0) == 0)
     {
         path_length = std::strlen(executable_path);
@@ -171,10 +168,10 @@ inline std::string GetLastErrorAsString(DWORD error) {
 
     //Ask Win32 to give us the string version of that message ID.
     //The parameters we pass in, tell Win32 to create the buffer that holds the message for us (because we don't yet know how long the message string will be).
-    size_t size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
-                                   | FORMAT_MESSAGE_IGNORE_INSERTS,
-                                 NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                                 (LPSTR) &messageBuffer, 0, NULL);
+    usize size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
+                                  | FORMAT_MESSAGE_IGNORE_INSERTS,
+                                NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                                (LPSTR) &messageBuffer, 0, NULL);
 
     //Copy the error message into a std::string.
     std::string message(messageBuffer, size);
@@ -278,12 +275,12 @@ class SharedMemoryBackend {
 
    private:
     void initialize(const std::string& shm_name, const T& value) {
-        const size_t total_size = sizeof(T) + sizeof(IS_INITIALIZED_VALUE);
+        const usize total_size = sizeof(T) + sizeof(IS_INITIALIZED_VALUE);
 
         // Try allocating with large pages first.
         hMapFile = windows_try_with_large_page_priviliges(
-          [&](size_t largePageSize) {
-              const size_t total_size_aligned =
+          [&](usize largePageSize) {
+              const usize total_size_aligned =
                 (total_size + largePageSize - 1) / largePageSize * largePageSize;
 
     #if defined(_WIN64)
@@ -407,7 +404,7 @@ class SharedMemoryBackend {
     std::string last_error_message;
 };
 
-#elif defined(__linux__) && !defined(__ANDROID__)
+#elif defined(USE_UNIX_SHM)
 
 template<typename T>
 class SharedMemoryBackend {
@@ -422,7 +419,7 @@ class SharedMemoryBackend {
         return reinterpret_cast<void*>(const_cast<T*>(ptr));
     }
 
-    bool is_valid() const { return shm1 && shm1->is_open() && shm1->is_initialized(); }
+    bool is_valid() const { return shm1 && shm1->is_mapped() && shm1->is_serving(); }
 
     SystemWideSharedConstantAllocationStatus get_status() const {
         return is_valid() ? SystemWideSharedConstantAllocationStatus::SharedMemory
@@ -433,11 +430,11 @@ class SharedMemoryBackend {
         if (!shm1)
             return "Shared memory not initialized";
 
-        if (!shm1->is_open())
-            return "Shared memory is not open";
+        if (!shm1->is_mapped())
+            return "Shared memory is not mapped";
 
-        if (!shm1->is_initialized())
-            return "Not initialized";
+        if (!shm1->is_serving())
+            return "Shared memory is not serving to other processes";
 
         return std::nullopt;
     }
@@ -530,16 +527,16 @@ struct SystemWideSharedConstant {
 
     // Content is addressed by its hash. An additional discriminator can be added to account for differences
     // that are not present in the content, for example NUMA node allocation.
-    SystemWideSharedConstant(const T& value, std::size_t discriminator = 0) {
-        std::size_t content_hash    = std::hash<T>{}(value);
-        std::size_t executable_hash = hash_string(getExecutablePathHash());
+    SystemWideSharedConstant(const T& value, usize discriminator = 0) {
+        usize content_hash    = std::hash<T>{}(value);
+        usize executable_hash = hash_string(getExecutablePathHash());
 
         char buf[1024];
         std::snprintf(buf, sizeof(buf), "Local\\sf_%zu$%zu$%zu", content_hash, executable_hash,
                       discriminator);
         std::string shm_name = buf;
 
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(USE_UNIX_SHM)
         // POSIX shared memory names must start with a slash
         shm_name = "/sf_" + createHashString(shm_name);
 

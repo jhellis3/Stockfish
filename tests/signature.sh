@@ -18,7 +18,8 @@ error()
 trap 'error ${LINENO}' ERR
 
 # obtain
-eval "$RUN_PREFIX ./crystal bench" > "$STDOUT_FILE" 2> "$STDERR_FILE" || error ${LINENO}
+EXE=${EXE:-./crystal}
+eval "$RUN_PREFIX $EXE bench" > "$STDOUT_FILE" 2> "$STDERR_FILE" || error ${LINENO}
 signature=$(grep "Nodes searched  : " "$STDERR_FILE" | awk '{print $4}')
 
 if [ $# -gt 0 ]; then
