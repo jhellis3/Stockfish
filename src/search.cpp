@@ -1002,43 +1002,6 @@ Value Search::Worker::search(
 
        improving |= ss->staticEval >= beta;
 
-       probCutBeta = beta + 241 - 64 * improving;
-       // Step 12. ProbCut
-       // If we have a good enough capture (or queen promotion) and a reduced search
-       // returns a value much above beta, we can (almost) safely prune the previous move.
-       if (    depth > 4
-           && (ttCapture || !ttData.move)
-           // If we don't have a ttHit or our ttDepth is not greater our
-           // reduced depth search, continue with the probcut.
-           && (!ss->ttHit || (ttData.depth < depth - 3 && ttData.value >= probCutBeta && ttData.value != VALUE_NONE)))
-       {
-           assert(probCutBeta < VALUE_INFINITE);
-           MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &captureHistory);
-           Depth      probCutDepth = depth - (improving ? 5 : 3);
-
-           while ((move = mp.next_move()) != Move::none())
-               if (move != excludedMove)
-               {
-                   assert(pos.capture_stage(move));
-
-                   movedPiece = pos.moved_piece(move);
-
-                   do_move(pos, move, st, ss);
-
-                   value = -search<NonPV>(pos, ss+1, -probCutBeta, -probCutBeta+1, probCutDepth, !cutNode);
-
-                   undo_move(pos, move);
-
-                   if (value >= probCutBeta)
-                   {
-                       if (!excludedMove)
-                           ttWriter.write(posKey, value_to_tt(value, ss->ply), ss->ttPv,
-                                     BOUND_LOWER, probCutDepth + 1, move, unadjustedStaticEval, tt.generation(), rule50);
-
-                       return value;
-                   }
-               }
-       }
     } // End early Pruning
 
     // Step 11. Internal iterative reductions
@@ -1120,6 +1083,8 @@ Value Search::Worker::search(
     bool doLMP =     ss->ply > 2
                  && !PvNode
                  &&  pos.non_pawn_material(us);
+
+    probCutBeta = beta + 241 - 64 * improving;
 
     // Step 13. Loop through all pseudo-legal moves until no moves remain
     // or a beta cutoff occurs.
@@ -1252,6 +1217,36 @@ Value Search::Worker::search(
             }
         }
 
+        // Probcut
+        if (    capture
+            && !PvNode
+            &&  eval >= beta
+            && !is_decisive(eval)
+            && !is_decisive(beta)
+            &&  depth > 4
+            && (!ss->ttHit || (ttData.depth < depth - 3 && ttData.value >= probCutBeta && ttData.value != VALUE_NONE)))
+        {
+            Depth probCutDepth = depth - (improving ? 5 : 3);
+
+            assert(pos.capture_stage(move));
+
+            movedPiece = pos.moved_piece(move);
+
+            do_move(pos, move, st, givesCheck, ss);
+
+            value = -search<NonPV>(pos, ss+1, -probCutBeta, -probCutBeta+1, probCutDepth, !cutNode);
+
+            undo_move(pos, move);
+
+            if (value >= probCutBeta)
+            {
+                ttWriter.write(posKey, value_to_tt(value, ss->ply), ss->ttPv,
+                               BOUND_LOWER, probCutDepth + 1, move, unadjustedStaticEval, tt.generation(), rule50);
+
+                return value;
+            }
+        }
+
         // Step 15. Extensions
         if (gameCycleExtension)
             extension = 2;
@@ -1315,9 +1310,6 @@ Value Search::Worker::search(
                   - ss->statScore / 9554;
 
         r -= std::abs(correctionValue) / 26941440;
-
-        if (!capture && !is_decisive(alpha)) // review
-            r += std::clamp(alpha - eval, -64, 96) / 343;
 
         if (!allowExt && r < 0)
             r = 0;
