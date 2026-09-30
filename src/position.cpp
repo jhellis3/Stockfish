@@ -394,7 +394,7 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
         {
             st->epSquare = make_square(File(col - 'a'), Rank(row - '1'));
 
-            Bitboard pawns = attacks_bb<PAWN>(st->epSquare, ~sideToMove) & pieces(sideToMove, PAWN);
+            Bitboard pawns = attacks_bb(PAWN, st->epSquare, ~sideToMove) & pieces(sideToMove, PAWN);
             Bitboard target = (pieces(~sideToMove, PAWN) & (st->epSquare + pawn_push(~sideToMove)));
             Bitboard occ    = pieces() ^ target ^ st->epSquare;
 
@@ -472,8 +472,8 @@ void Position::set_check_info() const {
     Square ksq                              = square<KING>(~sideToMove);
     const auto [bishopAttacks, rookAttacks] = both_attacks_bb(ksq, pieces());
 
-    st->checkSquares[PAWN]   = attacks_bb<PAWN>(ksq, ~sideToMove);
-    st->checkSquares[KNIGHT] = attacks_bb<KNIGHT>(ksq);
+    st->checkSquares[PAWN]   = attacks_bb(PAWN, ksq, ~sideToMove);
+    st->checkSquares[KNIGHT] = attacks_bb(KNIGHT, ksq);
     st->checkSquares[BISHOP] = bishopAttacks;
     st->checkSquares[ROOK]   = rookAttacks;
     st->checkSquares[QUEEN]  = st->checkSquares[BISHOP] | st->checkSquares[ROOK];
@@ -618,8 +618,8 @@ void Position::update_slider_blockers(Color c) const {
     st->pinners[~c]        = 0;
 
     // Snipers are sliders that attack 's' when a piece and other snipers are removed
-    Bitboard snipers = ((attacks_bb<ROOK>(ksq) & pieces(QUEEN, ROOK))
-                        | (attacks_bb<BISHOP>(ksq) & pieces(QUEEN, BISHOP)))
+    Bitboard snipers = ((attacks_bb(ROOK, ksq) & pieces(QUEEN, ROOK))
+                        | (attacks_bb(BISHOP, ksq) & pieces(QUEEN, BISHOP)))
                      & pieces(~c);
     Bitboard occupancy = pieces() ^ snipers;
 
@@ -645,17 +645,17 @@ Bitboard Position::attackers_to(Square s, Bitboard occupied) const {
     const auto [bishopAttacks, rookAttacks] = both_attacks_bb(s, occupied);
 
     return (rookAttacks & pieces(ROOK, QUEEN)) | (bishopAttacks & pieces(BISHOP, QUEEN))
-         | (attacks_bb<PAWN>(s, BLACK) & pieces(WHITE, PAWN))
-         | (attacks_bb<PAWN>(s, WHITE) & pieces(BLACK, PAWN))
-         | (attacks_bb<KNIGHT>(s) & pieces(KNIGHT)) | (attacks_bb<KING>(s) & pieces(KING));
+         | (attacks_bb(PAWN, s, BLACK) & pieces(WHITE, PAWN))
+         | (attacks_bb(PAWN, s, WHITE) & pieces(BLACK, PAWN))
+         | (attacks_bb(KNIGHT, s) & pieces(KNIGHT)) | (attacks_bb(KING, s) & pieces(KING));
 }
 
 bool Position::attackers_to_exist(Square s, Bitboard occupied, Color c) const {
 
-    return (attacks_bb<ROOK>(s, occupied) & pieces(c, ROOK, QUEEN))
-        || (attacks_bb<BISHOP>(s, occupied) & pieces(c, BISHOP, QUEEN))
-        || (attacks_bb<PAWN>(s, ~c) & pieces(c, PAWN))
-        || (attacks_bb<KNIGHT>(s) & pieces(c, KNIGHT)) || (attacks_bb<KING>(s) & pieces(c, KING));
+    return (attacks_bb(ROOK, s, occupied) & pieces(c, ROOK, QUEEN))
+        || (attacks_bb(BISHOP, s, occupied) & pieces(c, BISHOP, QUEEN))
+        || (attacks_bb(PAWN, s, ~c) & pieces(c, PAWN))
+        || (attacks_bb(KNIGHT, s) & pieces(c, KNIGHT)) || (attacks_bb(KING, s) & pieces(c, KING));
 }
 
 // Tests whether a pseudo-legal move is legal
@@ -735,7 +735,7 @@ bool Position::pseudo_legal(const Move m) const {
             return false;
 
         // Check if it's a valid capture, single push, or double push
-        const bool isCapture    = bool(attacks_bb<PAWN>(from, us) & pieces(~us) & to);
+        const bool isCapture    = bool(attacks_bb(PAWN, from, us) & pieces(~us) & to);
         const bool isSinglePush = (from + pawn_push(us) == to) && empty(to);
         const bool isDoublePush = (from + 2 * pawn_push(us) == to)
                                && (relative_rank(us, from) == RANK_2) && empty(to)
@@ -943,7 +943,7 @@ void Position::do_move(Move                      m,
         if ((int(to) ^ int(from)) == 16)
         {
             Square   epSquare = to - pawn_push(us);
-            Bitboard pawns    = attacks_bb<PAWN>(epSquare, us) & pieces(them, PAWN);
+            Bitboard pawns    = attacks_bb(PAWN, epSquare, us) & pieces(them, PAWN);
 
             // If there are no pawns attacking the ep square, ep is not possible.
             if (pawns)
@@ -1248,8 +1248,8 @@ void Position::update_piece_threats(Piece               pc,
     Bitboard incomingThreats = PseudoAttacks[KNIGHT][s] & pieces(KNIGHT);
 
     if (pt == KNIGHT || pt == ROOK)
-        incomingThreats |= (attacks_bb<PAWN>(s, WHITE) & pieces(BLACK, PAWN))
-                         | (attacks_bb<PAWN>(s, BLACK) & pieces(WHITE, PAWN));
+        incomingThreats |= (attacks_bb(PAWN, s, WHITE) & pieces(BLACK, PAWN))
+                         | (attacks_bb(PAWN, s, BLACK) & pieces(WHITE, PAWN));
 
 #ifdef USE_AVX512ICL
     write_multiple_dirties<DirtyThreat::ThreatenedSqOffset, DirtyThreat::ThreatenedPcOffset>(
@@ -1439,7 +1439,7 @@ bool Position::see_ge(Move m, int threshold) const {
                 break;
             occupied ^= least_significant_square_bb(bb);
 
-            attackers |= attacks_bb<BISHOP>(to, occupied) & pieces(BISHOP, QUEEN);
+            attackers |= attacks_bb(BISHOP, to, occupied) & pieces(BISHOP, QUEEN);
         }
 
         else if ((bb = stmAttackers & pieces(KNIGHT)))
@@ -1455,7 +1455,7 @@ bool Position::see_ge(Move m, int threshold) const {
                 break;
             occupied ^= least_significant_square_bb(bb);
 
-            attackers |= attacks_bb<BISHOP>(to, occupied) & pieces(BISHOP, QUEEN);
+            attackers |= attacks_bb(BISHOP, to, occupied) & pieces(BISHOP, QUEEN);
         }
 
         else if ((bb = stmAttackers & pieces(ROOK)))
@@ -1464,7 +1464,7 @@ bool Position::see_ge(Move m, int threshold) const {
                 break;
             occupied ^= least_significant_square_bb(bb);
 
-            attackers |= attacks_bb<ROOK>(to, occupied) & pieces(ROOK, QUEEN);
+            attackers |= attacks_bb(ROOK, to, occupied) & pieces(ROOK, QUEEN);
         }
 
         else if ((bb = stmAttackers & pieces(QUEEN)))
@@ -1525,7 +1525,7 @@ bool Position::king_danger(Color c) const {
 
     kingRing = kingAttackers = legalKing = 0;
 
-    kingRing = attacks_bb<KING>(ksq);
+    kingRing = attacks_bb(KING, ksq);
 
     while (kingRing)
     {
@@ -1661,7 +1661,7 @@ bool Position::pos_is_ok() const {
         Square ksq = square<KING>(sideToMove);
 
         Bitboard captured = (ep_square() + pawn_push(~sideToMove)) & pieces(~sideToMove, PAWN);
-        Bitboard pawns    = attacks_bb<PAWN>(ep_square(), ~sideToMove) & pieces(sideToMove, PAWN);
+        Bitboard pawns    = attacks_bb(PAWN, ep_square(), ~sideToMove) & pieces(sideToMove, PAWN);
         Bitboard potentialCheckers = pieces(~sideToMove) ^ captured;
 
         if (!captured || !pawns

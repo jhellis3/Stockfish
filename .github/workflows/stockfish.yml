@@ -14,7 +14,7 @@ concurrency:
 jobs:
   Prerelease:
     if: github.repository == 'official-stockfish/Stockfish' && github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     needs: [Matrix, ARMCompilation, UniversalCompilation]
     outputs:
       release_tag: ${{ steps.prerelease_metadata.outputs.release_tag }}
@@ -109,7 +109,7 @@ jobs:
             [View all commits →](https://github.com/${{ github.repository }}/commits/master)
   Matrix:
     name: Prepare matrices
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       arm_matrix: ${{ steps.set-arm-matrix.outputs.arm_matrix }}
       universal_matrix: ${{ steps.set-universal-matrix.outputs.universal_matrix }}
@@ -197,7 +197,7 @@ jobs:
   PublishPrerelease:
     if: github.repository == 'official-stockfish/Stockfish' && needs.Prerelease.outputs.release_tag != ''
     needs: [Prerelease, DevBinaries, DevARMBinaries]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: write # For publishing the draft prerelease
     steps:

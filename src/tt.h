@@ -62,7 +62,7 @@ struct TTData {
         depth(d),
         bound(b),
         is_pv(pv),
-        rule50(r50count) {};
+        rule50(r50count) {}
     // clang-format on
 };
 

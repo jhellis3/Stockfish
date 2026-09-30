@@ -527,4 +527,4 @@ BenchmarkSetup setup_benchmark(std::istream& is) {
     return setup;
 }
 
-}  // namespace Stockfish
+}  // namespace Stockfish::Benchmark

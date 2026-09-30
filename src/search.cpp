@@ -50,8 +50,10 @@
 
 namespace Stockfish {
 
-static constexpr std::array<int, 16> lmrDivisor = {3637, 2787, 2761, 2939, 3171, 3347, 3147, 2762,
-                                                   2772, 3106, 3107, 3060, 3112, 2991, 3090, 3542};
+inline int lmr_divisor(int depth) {
+    int d = std::min(depth, 16);
+    return 3000 + 7 * (d - 8) * (d - 8);
+}
 
 namespace TB = Tablebases;
 
@@ -83,12 +85,13 @@ int correction_value(const Worker& w, const Position& pos, const Stack* const ss
     const int   bnpcv  = shared.nonpawn_correction_entry<BLACK>(pos)[us].nonPawnBlack;
     const int   cntcv =
       m.is_ok()
-          ? 8761
-            * ((*(ss - 2)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()]
-               + (*(ss - 4)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()])
-          : 64049;
+          ? 7885
+              * ((*(ss - 2)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()]
+                 + (*(ss - 4)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()])
+            + 6307 * (*(ss - 6)->continuationCorrectionHistory)[pos.piece_on(m.to_sq())][m.to_sq()]
+          : 80695;
 
-    return 15341 * pcv + 10569 * micv + 12906 * (wnpcv + bnpcv) + cntcv;
+    return 13806 * pcv + 9512 * micv + 11615 * (wnpcv + bnpcv) + cntcv;
 }
 
 // Add correctionHistory value to raw staticEval and guarantee evaluation
@@ -118,6 +121,7 @@ void update_correction_history(const Position& pos,
         const Piece  pc = pos.piece_on(to);
         (*(ss - 2)->continuationCorrectionHistory)[pc][to] << bonus * 130 / 128;
         (*(ss - 4)->continuationCorrectionHistory)[pc][to] << bonus * 70 / 128;
+        (*(ss - 6)->continuationCorrectionHistory)[pc][to] << bonus * 35 / 128;
     }
 }
 
@@ -587,6 +591,7 @@ void Search::Worker::do_move(
 
         prefetch(&(*(ss - 1)->continuationCorrectionHistory)[pc][to]);
         prefetch(&(*(ss - 3)->continuationCorrectionHistory)[pc][to]);
+        prefetch(&(*(ss - 5)->continuationCorrectionHistory)[pc][to]);
     }
 
     ++nodes;
@@ -700,7 +705,7 @@ Value Search::Worker::search(
     ss->secondaryLine   = false;
     ss->mainLine        = false;
     drawValue           = contempt[us];
-    rule50              = std::min(90, pos.rule50_count());;
+    rule50              = std::min(92, pos.rule50_count());
 
     ss->followPV = rootNode
                 || ((ss - 1)->followPV
@@ -731,8 +736,10 @@ Value Search::Worker::search(
         }
 
         // Step 2. Check for aborted search or immediate draw
-        if (threads.stop.load(std::memory_order_relaxed) || pos.is_draw(ss->ply)
-            || ss->ply >= MAX_PLY)
+        if (pos.is_draw(ss->ply))
+            return drawValue;
+
+        if (threads.stop.load(std::memory_order_relaxed) || ss->ply >= MAX_PLY)
             return (ss->ply >= MAX_PLY && !ss->inCheck) ? evaluate(pos) : drawValue;
 
         // Step 3. Mate distance pruning. Even if we mate at the next move our score
@@ -772,48 +779,35 @@ Value Search::Worker::search(
         && !gameCycle
         && !(ss-1)->mainLine
         && ttData.depth > depth - (ttData.value < beta)
-        && is_valid(ttData.value)  // Can happen when !ttHit or when access race in probe()
-        && (ttData.bound & (ttData.value >= beta ? BOUND_LOWER : BOUND_UPPER))
-        && (cutNode == (ttData.value >= beta) || depth > 4))
+        && is_valid(ttData.value))  // Can happen when !ttHit or when access race in probe()
     {
-        // If the ttMove is quiet, update move sorting heuristics on TT hit
-        if (ttData.move && ttData.value >= beta)
+        // Case A: TT entry can produce a cutoff
+        if ((ttData.bound & (ttData.value >= beta ? BOUND_LOWER : BOUND_UPPER))
+            && (cutNode == (ttData.value >= beta) || depth > 4)
+            && rule50 < 92)
         {
-            // Bonus for a quiet ttMove that fails high
-            if (!ttCapture)
-                update_quiet_histories(pos, ss, *this, ttData.move, 131 * depth);
+            // If the ttMove is quiet, update move sorting heuristics on TT hit
+            if (ttData.move && ttData.value >= beta)
+            {
+                // Bonus for a quiet ttMove that fails high
+                if (!ttCapture)
+                    update_quiet_histories(pos, ss, *this, ttData.move, 131 * depth);
 
-            // Extra penalty for early quiet moves of the previous ply
-            if (prevSq != SQ_NONE && (ss - 1)->moveCount < 5 && !priorCapture)
-                update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq, -2210);
-        }
+                // Extra penalty for early quiet moves of the previous ply
+                if (prevSq != SQ_NONE && (ss - 1)->moveCount < 5 && !priorCapture)
+                    update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq, -2210);
+            }
 
-        // Partial workaround for the graph history interaction problem.
-        // For high rule50 counts don't produce transposition table cutoffs.
-        if (depth >= 7 && ttData.move && pos.pseudo_legal(ttData.move) && pos.legal(ttData.move)
-            && !is_decisive(ttData.value))
-        {
-            pos.do_move(ttData.move, st);
-            Key nextPosKey                             = pos.key();
-            auto [ttHitNext, ttDataNext, ttWriterNext] = tt.probe(nextPosKey);
-            pos.undo_move(ttData.move);
-
-            if (!is_valid(ttDataNext.value))
-                return ttData.value;
-
-            if ((ttData.value >= beta) == (-ttDataNext.value >= beta))
-                return ttData.value;
-        }
-        else
             return ttData.value;
-
-    }  // No cutoff, but why? Compare the aspiration window to the inexact bound
-    else if (!PvNode && !excludedMove && ttData.depth > depth - (ttData.value <= beta)
-             && is_valid(ttData.value) && ttData.bound != BOUND_EXACT
-             && ttData.bound & (ttData.value >= beta ? BOUND_UPPER : BOUND_LOWER) && depth > 5)
-    {
-        // If such a mismatch is the only reason cutoff failed, the TT entry is now useless
-        ttWriter.penalize(1);
+        }
+        // Case B: No cutoff, but depth was sufficient. Compare the aspiration window to the bound.
+        else if (ttData.bound != BOUND_EXACT
+                 && (ttData.bound & (ttData.value >= beta ? BOUND_UPPER : BOUND_LOWER))
+                 && depth > 5)
+        {
+            // If such a mismatch is the only reason cutoff failed, the TT entry is now useless
+            ttWriter.penalize(1);
+        }
     }
 
     // Step 7. Tablebases probe
@@ -923,6 +917,9 @@ Value Search::Worker::search(
 
     // Begin early pruning.
     if (   !PvNode
+        && !gameCycle
+        && !excludedMove
+        && !kingDanger
         && !thisThread->nmpGuardV
         && !is_decisive(eval)
         && !is_decisive(beta)
@@ -939,9 +936,6 @@ Value Search::Worker::search(
        // The depth condition is important for mate finding.
        if (    depth < (9 - 2 * ((ss-1)->mainLine || (ss-1)->secondaryLine || (ttData.move && !ttCapture)))
            && !ss->ttPv
-           && !kingDanger
-           && !excludedMove
-           && !gameCycle
            && !(thisThread->nmpGuard && nullParity)
            &&  eval - futilityMargin >= beta)
            return (661 * beta + 363 * eval) / 1024; // review
@@ -949,12 +943,9 @@ Value Search::Worker::search(
        // Step 9. Null move search with verification search (~35 Elo)
        if (   !thisThread->nmpGuard
            &&  cutNode
-           && !gameCycle
-           && !excludedMove
            &&  eval >= ss->staticEval
            &&  ss->staticEval + 50 * ss->priorNMPFailHigh >= beta - 13 * depth - 47 * improving + 365
            &&  pos.non_pawn_material(us)
-           && !kingDanger
            && (rootDepth < 11 || ourMove || MoveList<LEGAL>(pos).size() > 5))
        {
            assert(eval - beta >= 0);
@@ -1189,7 +1180,6 @@ Value Search::Worker::search(
             }
             else if (!ss->followPV || !PvNode)
             {
-                int dIndex  = std::min(int(depth), int(lmrDivisor.size())) - 1;
                 int history = (*contHist[0])[movedPiece][move.to_sq()]
                             + (*contHist[1])[movedPiece][move.to_sq()]
                             + sharedHistory.pawn_entry(pos)[movedPiece][move.to_sq()];
@@ -1201,7 +1191,7 @@ Value Search::Worker::search(
                 history += 69 * mainHistory[us][move.raw()] / 32;
 
                 // (*Scaler): Generally, lower divisors scale well
-                lmrDepth += history / lmrDivisor[dIndex];
+                lmrDepth += history / lmr_divisor(depth);
 
                 Value futilityValue =
                   ss->staticEval + 119 * lmrDepth + 90 * (ss->staticEval > alpha) + 164;
@@ -1324,9 +1314,8 @@ Value Search::Worker::search(
         {
             // In general we want to cap the LMR depth search at newDepth, but when
             // reduction is negative, we allow this move a limited search extension
-            // beyond the first move depth.
-            // To prevent problems when the max value is less than the min value,
-            // std::clamp has been replaced by a more robust implementation.
+            // beyond the first move depth. To avoid search explosion, extensions
+            // are not allowed deep, relative to rootDepth, in the search tree.
             Depth d = std::max(1, std::min(newDepth - r, newDepth + 2)) + PvNode;
 
             value         = -search<NonPV>(pos, ss + 1, -(alpha + 1), -alpha, d, true);
@@ -1606,7 +1595,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     Value bestValue, value, futilityBase, drawValue;
     bool  pvHit, givesCheck, capture, gameCycle;
     int   moveCount;
-    uint8_t rule50 = std::min(90, pos.rule50_count());
+    uint8_t rule50 = std::min(92, pos.rule50_count());
     Color us = pos.side_to_move();
 
     // Step 1. Initialize node
@@ -1659,6 +1648,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     // At non-PV nodes we check for an early TT cutoff
     if (   !PvNode
         &&  ttData.depth >= DEPTH_QS
+        &&  rule50 < 92
         && !gameCycle
         &&  is_valid(ttData.value)
         &&  (ttData.bound & (ttData.value >= beta ? BOUND_LOWER : BOUND_UPPER)))

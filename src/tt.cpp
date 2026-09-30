@@ -76,7 +76,7 @@ struct TTEntry {
     }
 
     // Check if the TT entry is occupied
-    bool is_occupied() const { return bool(depth16); };
+    bool is_occupied() const { return bool(depth16); }
 
     // Insert data in the TT entry
     void save(Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev, u8 curr_generation, u8 r50count);

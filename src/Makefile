@@ -517,7 +517,7 @@ ifeq ($(COMP),gcc)
 			LDFLAGS += -m$(bits)
 		endif
 	else ifeq ($(arch),loongarch64)
-		CXXFLAGS += -latomic
+		LDFLAGS += -latomic
 	else ifneq ($(arch),wasm32)
 		CXXFLAGS += -m$(bits)
 		LDFLAGS += -m$(bits)
@@ -588,15 +588,20 @@ ifeq ($(COMP),clang)
 			LDFLAGS += -m$(bits)
 		endif
 	else ifeq ($(arch),loongarch64)
-		CXXFLAGS += -latomic
+		LDFLAGS += -latomic
 	else
 		CXXFLAGS += -m$(bits)
 		LDFLAGS += -m$(bits)
 	endif
 endif
 
+ifneq ($(MACOSX_VERSION_MIN),)
+	mac_target_flags := -mmacosx-version-min=$(MACOSX_VERSION_MIN)
+else
+	mac_target_flags :=
+endif
+
 ifeq ($(TARGET_KERNEL),Darwin)
-	mac_target_flags := -mmacosx-version-min=10.15
 	ifneq ($(arch),any)
 		mac_target_flags += -arch $(arch)
 	endif
@@ -1429,7 +1434,7 @@ else ifeq ($(TARGET_KERNEL),Linux)
 else    # windows
   UNIVERSAL_FINAL_FLAGS += -Wl,--allow-multiple-definition -static
   ifeq ($(COMP),clang)
-    UNIVERSAL_FINAL_FLAGS += -lpthread
+    UNIVERSAL_FINAL_FLAGS += -lpthread -fuse-ld=lld
   endif
 endif
 

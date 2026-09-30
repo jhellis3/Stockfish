@@ -501,8 +501,6 @@ u64 UCIEngine::perft(const Search::LimitsType& limits) {
 }
 
 void UCIEngine::position(std::istringstream& is) {
-    const std::string fullCommand = is.str();
-
     std::string token, fen;
 
     is >> token;

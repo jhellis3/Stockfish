@@ -13,7 +13,7 @@ on:
 
 jobs:
   Matrix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
       universal_matrix: ${{ steps.set-universal-matrix.outputs.universal_matrix }}
       arm_matrix: ${{ steps.set-arm-matrix.outputs.arm_matrix }}
@@ -32,7 +32,7 @@ jobs:
 
   OfficialReleaseDraft:
     if: github.repository == 'official-stockfish/Stockfish'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     needs: [Matrix]
     outputs:
       release_tag: ${{ steps.release_metadata.outputs.release_tag }}

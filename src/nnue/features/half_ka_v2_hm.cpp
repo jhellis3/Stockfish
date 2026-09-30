@@ -20,6 +20,9 @@
 
 #include "half_ka_v2_hm.h"
 
+#include <array>
+
+#include "../../misc.h"
 #include "../../types.h"
 #include "../nnue_common.h"
 
@@ -79,9 +82,21 @@ void HalfKAv2_hm::write_indices(const std::array<Piece, SQUARE_NB>& oldPieces,
 // Index of a feature for a given king position and another piece on some square
 
 IndexType HalfKAv2_hm::make_index(Color perspective, Square s, Piece pc, Square ksq) {
-    const IndexType flip = 56 * perspective;
-    return (IndexType(s) ^ OrientTBL[ksq] ^ flip) + PieceSquareIndex[perspective][pc]
-         + KingBuckets[int(ksq) ^ flip];
+    alignas(64) static constexpr auto offsets = [] {
+        std::array<std::array<u16, PIECE_NB>, COLOR_NB * SQUARE_NB> table{};
+        for (int c = 0; c < COLOR_NB; ++c)
+            for (int sq = 0; sq < SQUARE_NB; ++sq)
+            {
+                const u16 flip   = 56 * c;
+                const u16 orient = u16(OrientTBL[sq]) ^ flip;
+                for (int pieceIndex = 0; pieceIndex < PIECE_NB; ++pieceIndex)
+                    table[c * SQUARE_NB + sq][pieceIndex] =
+                      PieceSquareIndex[c][pieceIndex] + KingBuckets[sq ^ flip] + orient;
+            }
+        return table;
+    }();
+
+    return IndexType(s) ^ offsets[perspective * SQUARE_NB + ksq][pc];
 }
 
 // Get a list of indices for recently changed features
